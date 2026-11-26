@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>FX Lab – Chart & Replay</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header id="toolbar">
+  <select id="symbol" title="Cặp tiền"></select>
+  <div class="group" id="tfs">
+    <button data-tf="M5">M5</button><button data-tf="M15">M15</button><button data-tf="M30">M30</button>
+    <button data-tf="H1">H1</button><button data-tf="H4">H4</button><button data-tf="D1">D1</button><button data-tf="W1">W1</button>
+  </div>
+  <div class="group">
+    <button id="btn-indicators" title="Thêm indicator">ƒx Indicators</button>
+  </div>
+  <div class="group">
+    <button data-tool="replay" title="Click lên chart để chọn nến bắt đầu replay">⏮ Replay</button>
+    <input type="datetime-local" id="goto" title="Replay từ ngày giờ (theo múi giờ đang chọn)">
+    <button id="btn-goto">Đi</button>
+    <button id="btn-back" title="Lùi 1 nến (←)">◀</button>
+    <button id="btn-play" title="Chạy/dừng (Space)">▶</button>
+    <button id="btn-next" title="Nến tiếp (→)">▶|</button>
+    <select id="speed" title="Tốc độ">
+      <option value="1000">1s</option><option value="500" selected>0.5s</option>
+      <option value="250">0.25s</option><option value="100">0.1s</option><option value="30">0.03s</option>
+    </select>
+    <button id="btn-exit-replay" title="Thoát replay, xem toàn bộ dữ liệu">✕ Thoát</button>
+  </div>
+  <div class="group right">
+    <select id="tz" title="Múi giờ hiển thị">
+      <option value="0">UTC</option><option value="1">UTC+1</option><option value="2">UTC+2</option>
+      <option value="3">UTC+3</option><option value="7">UTC+7</option><option value="-5">UTC-5</option><option value="-4">UTC-4</option>
+    </select>
+    <button id="btn-update" title="Tải dữ liệu mới nhất từ Yahoo">⟳ Cập nhật dữ liệu</button>
+  </div>
+</header>
+
+<main>
+  <nav id="drawbar">
+    <button data-tool="trend" title="Trendline (click 2 điểm)">╱</button>
+    <button data-tool="hline" title="Đường ngang">―</button>
+    <button data-tool="vline" title="Đường dọc">│</button>
+    <button data-tool="fib" title="Fib Retracement (click 2 điểm: từ đầu sóng tới cuối sóng)">Fib</button>
+    <button data-tool="long" title="Long Position">L</button>
+    <button data-tool="short" title="Short Position">S</button>
+    <button data-tool="measure" title="Đo giá / thời gian (click 2 điểm)">⇔</button>
+    <hr>
+    <button id="btn-magnet" title="Nam châm: bám vào O/H/L/C của nến">🧲</button>
+    <button id="btn-keep-tool" title="Giữ công cụ sau khi vẽ (vẽ liên tục)">🔒</button>
+    <hr>
+    <button id="undo-draw" title="Xóa hình vẽ cuối (Ctrl+Z)">↶</button>
+    <button id="clear-draw" title="Xóa tất cả hình vẽ">🗑</button>
+  </nav>
+
+  <section id="charts">
+    <div id="chart-wrap">
+      <canvas id="ind-underlay"></canvas>
+      <div id="chart"></div>
+      <canvas id="draw-overlay"></canvas>
+      <div id="legend"><div id="legend-main"></div><div id="legend-ind"></div></div>
+      <div id="draw-props" class="hidden"></div>
+    </div>
+    <div id="panes"></div>
+  </section>
+
+  <aside id="side">
+    <div class="panel">
+      <h3>Đặt lệnh</h3>
+      <div class="form">
+        <label>Vốn ban đầu ($)<input id="s-balance" type="number" step="100" min="100"></label>
+        <label>Rủi ro / lệnh (%)<input id="s-risk" type="number" step="0.1" min="0.1"></label>
+        <label>SL (pip)<input id="s-sl" type="number" step="0.5" min="0.5"></label>
+        <label>TP (pip, 0 = không)<input id="s-tp" type="number" step="0.5" min="0"></label>
+        <label>Spread (pip)<input id="s-spread" type="number" step="0.1" min="0"></label>
+        <label>Loại lệnh
+          <select id="s-otype">
+            <option value="market">Market</option><option value="limit">Limit (chờ)</option><option value="stop">Stop (chờ)</option>
+          </select>
+        </label>
+        <label id="oprice-row" class="hidden full">Giá đặt lệnh chờ
+          <span class="row"><input id="oprice" type="number" step="0.00001"><button data-tool="price" title="Click lên chart để lấy giá">Chọn trên chart</button></span>
+        </label>
+      </div>
+      <div id="lot-preview" class="muted"></div>
+      <div class="row trade-btns">
+        <button id="btn-buy" class="buy">BUY</button>
+        <button id="btn-sell" class="sell">SELL</button>
+      </div>
+      <div class="hint">→ nến tiếp · ← lùi · Space chạy/dừng · Shift+B mua · Shift+S bán · Esc hủy công cụ · Delete xóa hình đang chọn · Ctrl+Z xóa hình vẽ cuối</div>
+    </div>
+
+    <div class="panel">
+      <h3>Lệnh đang mở <span id="equity" class="muted"></span></h3>
+      <div id="positions"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Thống kê</h3>
+      <div id="stats"></div>
+      <div class="row">
+        <button id="btn-export">Xuất CSV</button>
+        <button id="btn-reset">Reset phiên</button>
+      </div>
+    </div>
+
+    <div class="panel grow">
+      <h3>Lịch sử lệnh</h3>
+      <div id="history"></div>
+    </div>
+  </aside>
+</main>
+
+<footer id="status"><span id="status-msg"></span><span id="status-mode"></span></footer>
+
+<div id="modal" class="hidden"><div class="modal-box"><div class="modal-head"><b id="modal-title"></b><button id="modal-close">✕</button></div><div id="modal-body"></div></div></div>
+
+<script src="/static/lightweight-charts.js"></script>
+<script src="/static/js/core.js"></script>
+<script src="/static/js/indicators.js"></script>
+<script src="/static/js/drawings.js"></script>
+<script src="/static/js/trading.js"></script>
+<script src="/static/js/main.js"></script>
+</body>
+</html>
