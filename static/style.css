@@ -40,6 +40,8 @@ main { flex: 1; display: flex; min-height: 0; }
 #chart-wrap.cur-move, #chart-wrap.cur-move * { cursor: move !important; }
 #chart-wrap.cur-handle, #chart-wrap.cur-handle * { cursor: pointer !important; }
 #chart-wrap.cur-draw, #chart-wrap.cur-draw * { cursor: crosshair !important; }
+#chart-wrap.cur-ns, #chart-wrap.cur-ns * { cursor: ns-resize !important; }
+#chart-wrap.cur-ew, #chart-wrap.cur-ew * { cursor: ew-resize !important; }
 
 #legend { position: absolute; top: 6px; left: 8px; z-index: 5; pointer-events: none; white-space: nowrap; }
 #legend-main { text-shadow: 0 0 3px #131722; }

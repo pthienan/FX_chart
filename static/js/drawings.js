@@ -22,11 +22,12 @@ const Draw = (() => {
     hline: 'Click để đặt đường ngang.',
     vline: 'Click để đặt đường dọc.',
     fib: 'Fib Retracement: click đầu sóng, rồi click cuối sóng.',
-    long: 'Long Position: click tại giá vào lệnh. Kéo các điểm tròn để chỉnh TP / SL / độ rộng.',
-    short: 'Short Position: click tại giá vào lệnh. Kéo các điểm tròn để chỉnh TP / SL / độ rộng.',
+    long: 'Long Position: click tại giá vào lệnh. Kéo mép trên vùng xanh = TP, mép dưới vùng đỏ = SL, đường giữa = Entry, mép phải = độ rộng, kéo trong box = di chuyển.',
+    short: 'Short Position: click tại giá vào lệnh. Kéo mép vùng xanh = TP, mép vùng đỏ = SL, đường giữa = Entry, mép phải = độ rộng, kéo trong box = di chuyển.',
     measure: 'Đo: click điểm thứ nhất.',
   };
   const HIT = 6;
+  const MAGNET_PX = 14;
 
   let sel = null, hover = null, drag = null, pending = null, measure = null;
   let magnet = false, keepTool = false, isDirty = true, lastSig = '';
@@ -48,7 +49,7 @@ const Draw = (() => {
     l = Math.round(l);
     if (magnet && l >= 0 && l < S.end) {
       const b = S.bars[l];
-      let best = p, bd = Infinity;
+      let best = p, bd = MAGNET_PX;
       for (const v of [b.open, b.high, b.low, b.close]) {
         const dd = Math.abs(Y(v) - y);
         if (dd < bd) { bd = dd; best = v; }
@@ -184,9 +185,22 @@ const Draw = (() => {
       default: return false;
     }
   }
+  // Edges of the TP / SL zones, the entry line and the right border resize a position box, like TradingView.
+  function posEdgeHit(d, x, y) {
+    if (d.type !== 'long' && d.type !== 'short') return null;
+    const g = posGeom(d);
+    if (!g || x < g.L - HIT || x > g.R + HIT) return null;
+    if (Math.abs(y - g.yt) <= HIT) return 'tp';
+    if (Math.abs(y - g.ys) <= HIT) return 'sl';
+    const top = Math.min(g.yt, g.ys), bot = Math.max(g.yt, g.ys);
+    if (Math.abs(x - g.R) <= HIT && y >= top && y <= bot) return 'width';
+    if (Math.abs(y - g.ye) <= 4 && x >= g.L && x <= g.R) return 'entryP';
+    return null;
+  }
   function hitTest(x, y) {
     const order = [...S.drawings].reverse();
-    for (const d of order) for (const h of handles(d)) if (Math.hypot(h.x - x, h.y - y) <= HIT + 1) return { d, h: h.id };
+    for (const d of order) for (const h of handles(d)) if (Math.hypot(h.x - x, h.y - y) <= HIT + 2) return { d, h: h.id };
+    for (const d of order) { const e = posEdgeHit(d, x, y); if (e) return { d, h: e }; }
     for (const d of order) if (bodyHit(d, x, y)) return { d, h: 'body' };
     return null;
   }
@@ -423,7 +437,11 @@ const Draw = (() => {
       const long = d.type === 'long', e0 = d.pts[0].p, m = S.pip;
       if (drag.h === 'tp') d.tp = round(long ? Math.max(pt.p, e0 + m) : Math.min(pt.p, e0 - m));
       else if (drag.h === 'sl') d.sl = round(long ? Math.min(pt.p, e0 - m) : Math.max(pt.p, e0 + m));
-      else if (drag.h === 'entry') {
+      else if (drag.h === 'entryP') {
+        const lo = long ? d.sl + m : d.tp + m, hi = long ? d.tp - m : d.sl - m;
+        const p = round(Math.min(Math.max(pt.p, lo), hi));
+        d.pts = [{ t: d.pts[0].t, p }, { t: d.pts[1].t, p }];
+      } else if (drag.h === 'entry') {
         const lo = long ? d.sl + m : d.tp + m, hi = long ? d.tp - m : d.sl - m;
         const t = pt.l < timeToLogical(d.pts[1].t) ? pt.t : d.pts[0].t;
         d.pts[0] = { t, p: round(Math.min(Math.max(pt.p, lo), hi)) };
@@ -465,12 +483,17 @@ const Draw = (() => {
     } else if (tool === 'hline' || tool === 'vline') {
       commit(newDrawing(tool, [P]));
     } else if (tool === 'long' || tool === 'short') {
+      // Sized to the current view (as TradingView does), keeping the TP:SL ratio from the order settings.
       const dir = tool === 'long' ? 1 : -1;
-      const slPips = S.settings.sl > 0 ? S.settings.sl : 20;
-      const tpPips = S.settings.tp > 0 ? S.settings.tp : slPips * 2;
-      const d = newDrawing(tool, [P, { t: logicalToTime(pt.l + 20), p: P.p }]);
-      d.sl = round(P.p - dir * slPips * S.pip);
-      d.tp = round(P.p + dir * tpPips * S.pip);
+      const ph = paneH(), pAt = (yy) => candle.coordinateToPrice(yy);
+      const span = Math.abs(pAt(0) - pAt(ph)) || 100 * S.pip;
+      const slDist = Math.max(S.pip, Math.round((span * 0.08) / S.pip) * S.pip);
+      const ratio = S.settings.sl > 0 && S.settings.tp > 0 ? S.settings.tp / S.settings.sl : 2;
+      const spacing = Math.abs(ts().logicalToCoordinate(1) - ts().logicalToCoordinate(0)) || 6;
+      const bars = Math.max(5, Math.round((paneW() * 0.12) / spacing));
+      const d = newDrawing(tool, [P, { t: logicalToTime(pt.l + bars), p: P.p }]);
+      d.sl = round(P.p - dir * slDist);
+      d.tp = round(P.p + dir * slDist * ratio);
       commit(d);
     }
     if (!keepTool) api.setTool(null);
@@ -499,17 +522,24 @@ const Draw = (() => {
   window.addEventListener('mousemove', (e) => {
     const { x, y } = local(e);
     if (drag) { applyDrag(x, y); drag.moved = true; dirty(); return; }
-    const inside = wrap.contains(e.target) && x >= 0 && y >= 0 && x <= paneW() && y <= paneH() && !e.target.closest('#legend .lg-row, #draw-props');
+    const inside = e.target instanceof Element && wrap.contains(e.target) && x >= 0 && y >= 0 && x <= paneW() && y <= paneH() && !e.target.closest('#legend .lg-row, #draw-props');
     if (pending && inside) {
       const pt = pointAt(x, y);
       if (pt) { pending.pts[1] = { t: pt.t, p: pt.p }; dirty(); }
     }
     const h = !S.tool && inside ? hitTest(x, y) : null;
     if ((h && h.d) !== (hover && hover.d) || (h && h.h) !== (hover && hover.h)) { hover = h; dirty(); }
-    wrap.classList.toggle('cur-draw', !!S.tool && inside);
-    wrap.classList.toggle('cur-handle', !!h && h.h !== 'body');
-    wrap.classList.toggle('cur-move', !!h && h.h === 'body');
+    setCursor(S.tool && inside ? 'draw' : drag ? cursorFor(drag.h) : h ? cursorFor(h.h) : null);
   });
+  function cursorFor(id) {
+    if (id === 'body') return 'move';
+    if (id === 'tp' || id === 'sl' || id === 'entryP') return 'ns';
+    if (id === 'width') return 'ew';
+    return 'handle';
+  }
+  function setCursor(kind) {
+    for (const k of ['draw', 'move', 'handle', 'ns', 'ew']) wrap.classList.toggle('cur-' + k, k === kind);
+  }
 
   window.addEventListener('mouseup', () => {
     if (!drag) return;
