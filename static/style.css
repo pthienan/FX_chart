@@ -34,9 +34,9 @@ main { flex: 1; display: flex; min-height: 0; }
 
 #charts { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #chart-wrap { flex: 1; position: relative; min-height: 0; background: #131722; }
-#ind-underlay { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+#ind-underlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 #chart { position: absolute; inset: 0; z-index: 1; }
-#draw-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+#draw-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
 #chart-wrap.cur-move, #chart-wrap.cur-move * { cursor: move !important; }
 #chart-wrap.cur-handle, #chart-wrap.cur-handle * { cursor: pointer !important; }
 #chart-wrap.cur-draw, #chart-wrap.cur-draw * { cursor: crosshair !important; }

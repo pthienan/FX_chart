@@ -344,7 +344,7 @@ const Draw = (() => {
     const r = ts().getVisibleLogicalRange();
     const ref = S.bars[0].close;
     const sig = [wrap.clientWidth, wrap.clientHeight, paneW(), r ? r.from.toFixed(3) : '', r ? r.to.toFixed(3) : '',
-      Y(ref), Y(ref * 1.01), S.end, S.tf, S.tz].join('|');
+      Y(ref), Y(ref * 1.01), S.end, S.tf, S.tz, window.devicePixelRatio].join('|');
     if (sig === lastSig && !isDirty) return;
     lastSig = sig; isDirty = false;
     paint();
