@@ -124,3 +124,13 @@ td.sell { color: #ef5350; font-weight: 600; }
   color: #d1d4dc; font-weight: 600; }
 .ind-form input[type="text"] { width: 100%; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; }
+
+.fib-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding-bottom: 10px; border-bottom: 1px solid #2a2e39; }
+.fib-opts > div { display: flex; align-items: center; gap: 6px; }
+.fib-opts label { color: #9598a1; }
+.fib-chk { display: inline-flex; align-items: center; gap: 4px; color: #d1d4dc !important; cursor: pointer; }
+.fib-levels { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; padding-top: 10px; }
+.fib-lv { display: flex; align-items: center; gap: 6px; }
+.fib-lv input[type="number"] { width: 90px; }
+.fib-lv input[type="checkbox"]:not(:checked) ~ input { opacity: .45; }
+#modal-body .sw { width: 26px; height: 22px; padding: 0; border-radius: 4px; }

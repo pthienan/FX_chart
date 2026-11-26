@@ -5,22 +5,69 @@
 const Draw = (() => {
   const wrap = $('chart-wrap'), cv = $('draw-overlay'), ctx = cv.getContext('2d');
   const cu = $('ind-underlay'), ctxU = cu.getContext('2d');
-  const FONT = '11px -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+  const FONT_FAMILY = '-apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+  const FONT = `11px ${FONT_FAMILY}`;
   const FIB = [
     { l: 0, c: '#787b86' }, { l: 0.236, c: '#f23645' }, { l: 0.382, c: '#ff9800' }, { l: 0.5, c: '#4caf50' },
     { l: 0.618, c: '#089981' }, { l: 0.786, c: '#00bcd4' }, { l: 1, c: '#787b86' }, { l: 1.618, c: '#2962ff' },
   ];
-  const POINTS = { trend: 2, fib: 2, measure: 2, hline: 1, vline: 1, long: 1, short: 1 };
-  const DEFAULT_COLOR = { trend: '#2962ff', hline: '#f0b90b', vline: '#9598a1', fib: '#787b86' };
-  const DEFAULT_WIDTH = { trend: 2, hline: 1, vline: 1, fib: 1, long: 1, short: 1 };
-  const widthOf = (d) => d.width || DEFAULT_WIDTH[d.type] || 1;
-  const lastWidth = JSON.parse(localStorage.getItem('fxlab_draw_width') || '{}');
+  const FIB_EXTRA = [1.272, 1.414, 2, 2.272, 2.414, 2.618, 3, 3.618, 4.236, 0.65, 0.705, 0.886, -0.272, -0.618, 1.13, 4.618];
+  const FIB_PALETTE = ['#9c27b0', '#e91e63', '#f23645', '#ff9800', '#4caf50', '#089981', '#00bcd4', '#2962ff'];
+  const fibFactory = () => ({
+    levels: [
+      ...FIB.map((f) => ({ l: f.l, c: f.c, on: true })),
+      ...FIB_EXTRA.map((l, i) => ({ l, c: FIB_PALETTE[i % FIB_PALETTE.length], on: false })),
+    ],
+    trend: true, fill: true, showLevel: true, showPrice: true, ext: 'none', oneColor: null,
+  });
+  const fibExt = (d) => d.ext || (d.extend ? 'right' : 'none');
+
+  const POINTS = { trend: 2, fib: 2, measure: 2, rect: 2, hline: 1, vline: 1, long: 1, short: 1 };
+  const POS = {
+    width: 1, tpColor: '#26a69a', slColor: '#ef5350', fillOpacity: 22, alwaysStats: false, outcome: true,
+  };
+  const TEXT = { text: '', textColor: '#d1d4dc', textSize: 12 };
+  const TYPE_DEF = {
+    trend: { color: '#2962ff', width: 2, style: 'solid', extLeft: false, extend: false, stats: false, ...TEXT },
+    hline: { color: '#f0b90b', width: 1, style: 'solid', showPrice: true, ...TEXT },
+    vline: { color: '#9598a1', width: 1, style: 'solid', showTime: true, ...TEXT },
+    rect: {
+      color: '#9c27b0', width: 1, style: 'solid', fill: true, fillColor: '#9c27b0', fillOpacity: 20,
+      extLeft: false, extend: false, ...TEXT, textPos: 'top',
+    },
+    fib: { color: '#787b86', width: 1 },
+    long: POS, short: POS,
+  };
+  const DASH = { solid: [], dashed: [8, 5], dotted: [2, 3] };
+  const opt = (d, k) => (d[k] !== undefined && d[k] !== null ? d[k] : (TYPE_DEF[d.type] || {})[k]);
+  const widthOf = (d) => d.width || (TYPE_DEF[d.type] || {}).width || 1;
+  const colorOf = (d) => opt(d, 'color') || '#2962ff';
+  const dashOf = (d) => DASH[opt(d, 'style')] || [];
+
+  // Per-type user defaults ("Lưu làm mặc định"); migrates the older width / fib stores.
+  const DEF_STORE = 'fxlab_draw_defaults';
+  const userDefs = JSON.parse(localStorage.getItem(DEF_STORE) || '{}');
+  {
+    const oldW = JSON.parse(localStorage.getItem('fxlab_draw_width') || '{}');
+    for (const [t, w] of Object.entries(oldW)) userDefs[t] = { width: w, ...(userDefs[t] || {}) };
+    const oldFib = JSON.parse(localStorage.getItem('fxlab_fib_default') || 'null');
+    if (oldFib && !userDefs.fib?.levels) userDefs.fib = { ...(userDefs.fib || {}), ...oldFib };
+    localStorage.removeItem('fxlab_draw_width');
+    localStorage.removeItem('fxlab_fib_default');
+    localStorage.setItem(DEF_STORE, JSON.stringify(userDefs));
+  }
+  function setUserDef(types, vals) {
+    for (const t of types) userDefs[t] = { ...(userDefs[t] || {}), ...JSON.parse(JSON.stringify(vals)) };
+    localStorage.setItem(DEF_STORE, JSON.stringify(userDefs));
+  }
+
   const TOOL_HELP = {
     replay: 'Click lên nến muốn bắt đầu replay (các nến sau đó sẽ bị ẩn).',
     price: 'Click lên chart để lấy giá cho lệnh chờ.',
     trend: 'Trendline: click điểm thứ nhất.',
     hline: 'Click để đặt đường ngang.',
     vline: 'Click để đặt đường dọc.',
+    rect: 'Rectangle: click góc thứ nhất, rồi click góc đối diện.',
     fib: 'Fib Retracement: click đầu sóng, rồi click cuối sóng.',
     long: 'Long Position: click tại giá vào lệnh. Kéo mép trên vùng xanh = TP, mép dưới vùng đỏ = SL, đường giữa = Entry, mép phải = độ rộng, kéo trong box = di chuyển.',
     short: 'Short Position: click tại giá vào lệnh. Kéo mép vùng xanh = TP, mép vùng đỏ = SL, đường giữa = Entry, mép phải = độ rộng, kéo trong box = di chuyển.',
@@ -86,6 +133,14 @@ const Draw = (() => {
     ctx.fillStyle = color;
     ctx.fillText(str, x, y);
   }
+  function userText(d, x, y, align = 'left', baseline = 'bottom') {
+    const s = opt(d, 'text');
+    if (!s) return;
+    ctx.font = `${opt(d, 'textSize')}px ${FONT_FAMILY}`;
+    ctx.textAlign = align; ctx.textBaseline = baseline;
+    ctx.fillStyle = opt(d, 'textColor');
+    ctx.fillText(s, x, y);
+  }
   function priceTag(p, color, pw) {
     const y = Y(p);
     if (y == null || y < -10 || y > paneH() + 10) return;
@@ -111,9 +166,32 @@ const Draw = (() => {
   }
 
   // ------------------------------------------------------------ geometry per type
+  function trendSeg(d, pw) {
+    const a = xy(d.pts[0]), b = xy(d.pts[1]);
+    if (!a || !b) return null;
+    return { a, b, s: opt(d, 'extLeft') ? extended(b, a, pw) : a, e: opt(d, 'extend') ? extended(a, b, pw) : b };
+  }
+  function rectGeom(d, pw) {
+    const a = xy(d.pts[0]), b = xy(d.pts[1]);
+    if (!a || !b) return null;
+    return {
+      L: opt(d, 'extLeft') ? 0 : Math.min(a.x, b.x), R: opt(d, 'extend') ? pw : Math.max(a.x, b.x),
+      T: Math.min(a.y, b.y), B: Math.max(a.y, b.y), a, b,
+    };
+  }
   function fibLevels(d) {
     const p0 = d.pts[0].p, p1 = d.pts[1].p;
-    return FIB.map((f) => { const price = p1 + (p0 - p1) * f.l; return { ...f, price, y: Y(price) }; });
+    const src = d.levels || FIB.map((f) => ({ ...f, on: true }));
+    return src.filter((L) => L.on && Number.isFinite(L.l))
+      .map((L) => { const price = p1 + (p0 - p1) * L.l; return { l: L.l, c: d.oneColor || L.c, price, y: Y(price) }; })
+      .sort((a, b) => a.l - b.l);
+  }
+  function fibSpan(d, a, b, pw) {
+    const e = fibExt(d);
+    return {
+      xl: e === 'left' || e === 'both' ? 0 : Math.min(a.x, b.x),
+      xr: e === 'right' || e === 'both' ? pw : Math.max(a.x, b.x),
+    };
   }
   function posGeom(d) {
     const x1 = X(d.pts[0].t), x2 = X(d.pts[1].t);
@@ -147,6 +225,17 @@ const Draw = (() => {
         return d.pts.map((pt, k) => { const q = xy(pt); return q && { id: k, ...q }; }).filter(Boolean);
       case 'hline': { const y = Y(d.pts[0].p); return y == null ? [] : [{ id: 0, x: pw / 2, y }]; }
       case 'vline': { const x = X(d.pts[0].t); return x == null ? [] : [{ id: 0, x, y: ph / 2 }]; }
+      case 'rect': {
+        const xs = d.pts.map((pt) => X(pt.t)), ys = d.pts.map((pt) => Y(pt.p));
+        if ([...xs, ...ys].some((v) => v == null)) return [];
+        const xm = (xs[0] + xs[1]) / 2, ym = (ys[0] + ys[1]) / 2;
+        return [
+          { id: 'c00', x: xs[0], y: ys[0] }, { id: 'c11', x: xs[1], y: ys[1] },
+          { id: 'c01', x: xs[0], y: ys[1] }, { id: 'c10', x: xs[1], y: ys[0] },
+          { id: 'x0', x: xs[0], y: ym }, { id: 'x1', x: xs[1], y: ym },
+          { id: 'y0', x: xm, y: ys[0] }, { id: 'y1', x: xm, y: ys[1] },
+        ];
+      }
       case 'long': case 'short': {
         const g = posGeom(d);
         if (!g) return [];
@@ -165,16 +254,19 @@ const Draw = (() => {
     const pw = paneW(), ph = paneH();
     switch (d.type) {
       case 'trend': {
-        const a = xy(d.pts[0]), b = xy(d.pts[1]);
-        if (!a || !b) return false;
-        return distSeg(x, y, a, d.extend ? extended(a, b, pw) : b) <= HIT;
+        const g = trendSeg(d, pw);
+        return !!g && distSeg(x, y, g.s, g.e) <= HIT;
       }
       case 'hline': { const yy = Y(d.pts[0].p); return yy != null && Math.abs(y - yy) <= HIT && x <= pw; }
       case 'vline': { const xx = X(d.pts[0].t); return xx != null && Math.abs(x - xx) <= HIT && y <= ph; }
+      case 'rect': {
+        const g = rectGeom(d, pw);
+        return !!g && x >= g.L - HIT && x <= g.R + HIT && y >= g.T - HIT && y <= g.B + HIT;
+      }
       case 'fib': {
         const a = xy(d.pts[0]), b = xy(d.pts[1]);
         if (!a || !b) return false;
-        const xl = Math.min(a.x, b.x), xr = d.extend ? pw : Math.max(a.x, b.x);
+        const { xl, xr } = fibSpan(d, a, b, pw);
         if (distSeg(x, y, a, b) <= HIT) return true;
         return x >= xl - HIT && x <= xr + HIT && fibLevels(d).some((L) => L.y != null && Math.abs(y - L.y) <= HIT);
       }
@@ -206,49 +298,79 @@ const Draw = (() => {
   }
 
   // ------------------------------------------------------------ painting
+  const shapeActive = (d) => d === sel || d === pending || d === measure || (drag && drag.d === d) || (hover && hover.d === d);
+
   function drawShape(d, pw, ph) {
-    const active = d === sel || d === pending || d === measure || (drag && drag.d === d) || (hover && hover.d === d);
-    const col = d.color || DEFAULT_COLOR[d.type] || '#2962ff';
+    const active = shapeActive(d);
+    const col = colorOf(d);
     switch (d.type) {
       case 'trend': {
-        const a = xy(d.pts[0]), b = xy(d.pts[1]);
-        if (!a || !b) return;
-        const e = d.extend ? extended(a, b, pw) : b;
-        line(a.x, a.y, e.x, e.y, col, widthOf(d));
-        if (active) { handle(a.x, a.y, col); handle(b.x, b.y, col); }
+        const g = trendSeg(d, pw);
+        if (!g) return;
+        line(g.s.x, g.s.y, g.e.x, g.e.y, col, widthOf(d), dashOf(d));
+        if (opt(d, 'stats')) {
+          const pips = (d.pts[1].p - d.pts[0].p) / S.pip, pct = ((d.pts[1].p - d.pts[0].p) / d.pts[0].p) * 100;
+          const nb = Math.round(timeToLogical(d.pts[1].t) - timeToLogical(d.pts[0].t));
+          label(`${sign(pips)} pip (${sign(pct, 2)}%) · ${nb} nến`, g.b.x + 8, g.b.y + 14, '#fff', 'left', '#1e222dcc');
+        }
+        userText(d, (g.a.x + g.b.x) / 2, (g.a.y + g.b.y) / 2 - 6, 'center');
+        if (active) { handle(g.a.x, g.a.y, col); handle(g.b.x, g.b.y, col); }
         break;
       }
       case 'hline': {
         const y = Y(d.pts[0].p);
         if (y == null) return;
-        line(0, y, pw, y, col, widthOf(d));
+        line(0, y, pw, y, col, widthOf(d), dashOf(d));
+        userText(d, 8, y - 4);
         if (active) handle(pw / 2, y, col);
         break;
       }
       case 'vline': {
         const x = X(d.pts[0].t);
         if (x == null) return;
-        line(x, 0, x, ph, col, widthOf(d));
+        line(x, 0, x, ph, col, widthOf(d), dashOf(d));
+        userText(d, x + 6, 8, 'left', 'top');
         if (active) handle(x, ph / 2, col);
+        break;
+      }
+      case 'rect': {
+        const g = rectGeom(d, pw);
+        if (!g) return;
+        if (opt(d, 'fill')) {
+          ctx.fillStyle = hexA(opt(d, 'fillColor'), opt(d, 'fillOpacity') / 100);
+          ctx.fillRect(g.L, g.T, g.R - g.L, g.B - g.T);
+        }
+        ctx.strokeStyle = col; ctx.lineWidth = widthOf(d); ctx.setLineDash(dashOf(d));
+        ctx.strokeRect(g.L, g.T, g.R - g.L, g.B - g.T);
+        ctx.setLineDash([]);
+        const pos = opt(d, 'textPos'), cx = (g.L + g.R) / 2;
+        if (pos === 'middle') userText(d, cx, (g.T + g.B) / 2, 'center', 'middle');
+        else if (pos === 'bottom') userText(d, cx, g.B - 4, 'center', 'bottom');
+        else userText(d, cx, g.T + 4, 'center', 'top');
+        if (active) for (const h of handles(d)) handle(h.x, h.y, col);
         break;
       }
       case 'fib': {
         const a = xy(d.pts[0]), b = xy(d.pts[1]);
         if (!a || !b) return;
-        const xl = Math.min(a.x, b.x), xr = d.extend ? pw : Math.max(a.x, b.x);
+        const { xl, xr } = fibSpan(d, a, b, pw);
         const lv = fibLevels(d);
-        for (let k = 0; k < lv.length - 1; k++) {
-          const A = lv[k], B = lv[k + 1];
-          if (A.y == null || B.y == null) continue;
-          ctx.fillStyle = hexA(B.c, 0.1);
-          ctx.fillRect(xl, Math.min(A.y, B.y), xr - xl, Math.abs(B.y - A.y));
+        if (d.fill !== false) {
+          for (let k = 0; k < lv.length - 1; k++) {
+            const A = lv[k], B = lv[k + 1];
+            if (A.y == null || B.y == null) continue;
+            ctx.fillStyle = hexA(B.c, 0.1);
+            ctx.fillRect(xl, Math.min(A.y, B.y), xr - xl, Math.abs(B.y - A.y));
+          }
         }
+        const showL = d.showLevel !== false, showP = d.showPrice !== false;
         for (const L of lv) {
           if (L.y == null) continue;
           line(xl, L.y, xr, L.y, L.c, widthOf(d));
-          label(`${L.l} (${fmtPrice(L.price)})`, xl + 4, L.y - 8, L.c);
+          const txt = showL && showP ? `${L.l} (${fmtPrice(L.price)})` : showL ? `${L.l}` : showP ? fmtPrice(L.price) : '';
+          if (txt) label(txt, Math.max(xl, 0) + 4, L.y - 8, L.c);
         }
-        line(a.x, a.y, b.x, b.y, col, 1, [4, 4]);
+        if (d.trend !== false) line(a.x, a.y, b.x, b.y, col, 1, [4, 4]);
         if (active) { handle(a.x, a.y, col); handle(b.x, b.y, col); }
         break;
       }
@@ -256,29 +378,29 @@ const Draw = (() => {
         const g = posGeom(d);
         if (!g) return;
         const st = posStats(d);
-        ctx.fillStyle = 'rgba(38,166,154,0.22)';
+        const tpC = opt(d, 'tpColor'), slC = opt(d, 'slColor'), alpha = opt(d, 'fillOpacity') / 100;
+        ctx.fillStyle = hexA(tpC, alpha);
         ctx.fillRect(g.L, Math.min(g.ye, g.yt), g.R - g.L, Math.abs(g.yt - g.ye));
-        ctx.fillStyle = 'rgba(239,83,80,0.22)';
+        ctx.fillStyle = hexA(slC, alpha);
         ctx.fillRect(g.L, Math.min(g.ye, g.ys), g.R - g.L, Math.abs(g.ys - g.ye));
         line(g.L, g.ye, g.R, g.ye, '#9598a1', widthOf(d));
-        const out = posOutcome(d);
+        const out = opt(d, 'outcome') ? posOutcome(d) : null;
         if (out) {
           const xh = ts().logicalToCoordinate(out.i), yh = Y(out.price);
           if (xh != null && yh != null) {
-            line(g.L, g.ye, xh, yh, out.kind === 'sl' ? '#ef5350' : out.kind === 'tp' ? '#26a69a' : '#d1d4dc', 1, [4, 3]);
-            if (out.kind) label(out.kind === 'tp' ? '✓ TP' : '✗ SL', xh + 6, yh, '#fff', 'left', out.kind === 'tp' ? '#089981' : '#f23645');
+            line(g.L, g.ye, xh, yh, out.kind === 'sl' ? slC : out.kind === 'tp' ? tpC : '#d1d4dc', 1, [4, 3]);
           }
         }
         const cx = (g.L + g.R) / 2, up = (a, b) => (a < b ? -1 : 1);
-        if (active) {
+        if (active || opt(d, 'alwaysStats')) {
           const pctT = Math.abs(d.tp - st.e) / st.e * 100, pctS = Math.abs(st.e - d.sl) / st.e * 100;
-          label(`Target: ${st.tpPips.toFixed(1)} pip (${pctT.toFixed(2)}%) · ${money(st.reward)}`, cx, g.yt + 12 * up(g.yt, g.ye), '#fff', 'center', '#089981');
-          label(`Stop: ${st.slPips.toFixed(1)} pip (${pctS.toFixed(2)}%) · ${money(st.risk)}`, cx, g.ys + 12 * up(g.ys, g.ye), '#fff', 'center', '#f23645');
+          label(`Target: ${st.tpPips.toFixed(1)} pip (${pctT.toFixed(2)}%) · ${money(st.reward)}`, cx, g.yt + 12 * up(g.yt, g.ye), '#fff', 'center', tpC);
+          label(`Stop: ${st.slPips.toFixed(1)} pip (${pctS.toFixed(2)}%) · ${money(st.risk)}`, cx, g.ys + 12 * up(g.ys, g.ye), '#fff', 'center', slC);
           label(`${d.type === 'long' ? 'Long' : 'Short'} · R:R ${st.rr.toFixed(2)} · ${st.lots.toFixed(2)} lot`, cx, g.ye, '#fff', 'center', '#2a2e39');
-          for (const h of handles(d)) handle(h.x, h.y, h.id === 'tp' ? '#26a69a' : h.id === 'sl' ? '#ef5350' : '#d1d4dc');
         } else {
           label(`R:R ${st.rr.toFixed(2)}`, cx, g.ye, '#d1d4dc', 'center', '#1e222dcc');
         }
+        if (active) for (const h of handles(d)) handle(h.x, h.y, h.id === 'tp' ? tpC : h.id === 'sl' ? slC : '#d1d4dc');
         break;
       }
       case 'measure': {
@@ -301,13 +423,12 @@ const Draw = (() => {
   }
 
   function axisLabels(d, pw, ph) {
-    const active = d === sel || d === pending || d === measure || (drag && drag.d === d) || (hover && hover.d === d);
-    const col = d.color || DEFAULT_COLOR[d.type] || '#2962ff';
-    if (d.type === 'hline') { priceTag(d.pts[0].p, col, pw); return; }
-    if (d.type === 'vline') { timeTag(d.pts[0].t, col, pw, ph); return; }
-    if (!active) return;
+    const col = colorOf(d);
+    if (d.type === 'hline') { if (opt(d, 'showPrice')) priceTag(d.pts[0].p, col, pw); return; }
+    if (d.type === 'vline') { if (opt(d, 'showTime')) timeTag(d.pts[0].t, col, pw, ph); return; }
+    if (!shapeActive(d)) return;
     if (d.type === 'long' || d.type === 'short') {
-      priceTag(d.tp, '#089981', pw); priceTag(d.sl, '#f23645', pw); priceTag(d.pts[0].p, '#2a2e39', pw);
+      priceTag(d.tp, opt(d, 'tpColor'), pw); priceTag(d.sl, opt(d, 'slColor'), pw); priceTag(d.pts[0].p, '#2a2e39', pw);
       timeTag(d.pts[0].t, '#2a2e39', pw, ph); timeTag(d.pts[1].t, '#2a2e39', pw, ph);
       return;
     }
@@ -356,8 +477,8 @@ const Draw = (() => {
 
   function newDrawing(type, pts) {
     const d = { id: S.drawSeq++, type, pts };
-    if (DEFAULT_COLOR[type]) d.color = DEFAULT_COLOR[type];
-    if (lastWidth[type]) d.width = lastWidth[type];
+    if (type === 'fib') Object.assign(d, fibFactory());
+    Object.assign(d, JSON.parse(JSON.stringify(userDefs[type] || {})));
     return d;
   }
   function commit(d) {
@@ -371,18 +492,21 @@ const Draw = (() => {
     dirty();
   }
 
+  const widthSelect = (attr, w) =>
+    `<select ${attr}>${[1, 2, 3, 4].map((n) => `<option value="${n}"${n === w ? ' selected' : ''}>${n}px</option>`).join('')}</select>`;
+
   function renderProps() {
     const box = $('draw-props');
     if (!sel) { box.classList.add('hidden'); box.innerHTML = ''; return; }
     const d = sel, parts = [];
     if (d.type !== 'long' && d.type !== 'short') {
-      parts.push(`<input type="color" class="sw" data-a="color" value="${d.color || DEFAULT_COLOR[d.type]}" title="Màu">`);
+      parts.push(`<input type="color" class="sw" data-a="color" value="${colorOf(d)}" title="Màu">`);
     }
-    const w = widthOf(d);
-    parts.push(`<select data-a="width" title="Độ dày">${[1, 2, 3, 4].map((n) => `<option value="${n}"${n === w ? ' selected' : ''}>${n}px</option>`).join('')}</select>`);
-    if (d.type === 'trend' || d.type === 'fib') {
-      parts.push(`<button data-a="extend" class="${d.extend ? 'active' : ''}" title="Kéo dài sang phải">Kéo dài →</button>`);
+    parts.push(widthSelect('data-a="width" title="Độ dày"', widthOf(d)));
+    if (d.type === 'trend') {
+      parts.push(`<button data-a="extend" class="${opt(d, 'extend') ? 'active' : ''}" title="Kéo dài sang phải">Kéo dài →</button>`);
     }
+    parts.push('<button data-a="settings" title="Cài đặt (hoặc double-click vào hình vẽ)">⚙ Cài đặt</button>');
     if (d.type === 'long' || d.type === 'short') {
       parts.push('<button data-a="flip" title="Đổi Long ↔ Short">⇅ Đảo</button>');
       parts.push('<button data-a="pending" title="Replay: đặt lệnh chờ tại giá Entry, SL/TP theo box">Đặt lệnh chờ</button>');
@@ -399,8 +523,7 @@ const Draw = (() => {
   $('draw-props').addEventListener('change', (e) => {
     if (e.target.dataset.a === 'width' && sel) {
       sel.width = +e.target.value;
-      lastWidth[sel.type] = sel.width;
-      localStorage.setItem('fxlab_draw_width', JSON.stringify(lastWidth));
+      setUserDef(sel.type === 'long' || sel.type === 'short' ? ['long', 'short'] : [sel.type], { width: sel.width });
       e.target.blur();
       dirty(); save();
     }
@@ -408,7 +531,8 @@ const Draw = (() => {
   $('draw-props').addEventListener('click', (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (!a || !sel) return;
-    if (a === 'extend') { sel.extend = !sel.extend; renderProps(); save(); }
+    if (a === 'extend') { sel.extend = !opt(sel, 'extend'); renderProps(); save(); }
+    else if (a === 'settings') openSettings(sel);
     else if (a === 'delete') api.removeSelected();
     else if (a === 'flip') {
       const e0 = sel.pts[0].p;
@@ -419,6 +543,185 @@ const Draw = (() => {
     dirty();
   });
 
+  // ------------------------------------------------------------ settings dialogs
+  const NAMES = { trend: 'Trendline', hline: 'Đường ngang', vline: 'Đường dọc', rect: 'Rectangle', long: 'Long Position', short: 'Short Position' };
+  const F = {
+    color: ['color', 'color', 'Màu'],
+    width: ['width', 'width', 'Độ dày'],
+    style: ['style', 'style', 'Kiểu nét'],
+    text: ['text', 'text', 'Nội dung'],
+    textColor: ['textColor', 'color', 'Màu chữ'],
+    textSize: ['textSize', 'size', 'Cỡ chữ'],
+    extLeft: ['extLeft', 'bool', 'Kéo dài sang trái'],
+    extend: ['extend', 'bool', 'Kéo dài sang phải'],
+  };
+  const POS_SPEC = [
+    ['Kiểu', [['tpColor', 'color', 'Màu vùng TP'], ['slColor', 'color', 'Màu vùng SL'], ['fillOpacity', 'pct', 'Độ đậm vùng (%)'],
+      ['width', 'width', 'Độ dày đường Entry'], ['alwaysStats', 'bool', 'Luôn hiện đầy đủ thông số'], ['outcome', 'bool', 'Hiện đường kết quả (chạm TP/SL)']]],
+    ['Tọa độ', 'pos'],
+  ];
+  const SPEC = {
+    trend: [['Kiểu', [F.color, F.width, F.style, F.extLeft, F.extend, ['stats', 'bool', 'Hiện thống kê (pip, %, số nến)']]],
+      ['Chữ', [F.text, F.textColor, F.textSize]], ['Tọa độ', 'pts']],
+    hline: [['Kiểu', [F.color, F.width, F.style, ['showPrice', 'bool', 'Hiện nhãn giá trên trục']]],
+      ['Chữ', [F.text, F.textColor, F.textSize]], ['Tọa độ', 'pts']],
+    vline: [['Kiểu', [F.color, F.width, F.style, ['showTime', 'bool', 'Hiện nhãn thời gian trên trục']]],
+      ['Chữ', [F.text, F.textColor, F.textSize]]],
+    rect: [['Kiểu', [['color', 'color', 'Màu viền'], F.width, F.style, ['fill', 'bool', 'Tô nền'], ['fillColor', 'color', 'Màu nền'],
+      ['fillOpacity', 'pct', 'Độ đậm nền (%)'], F.extLeft, F.extend]],
+    ['Chữ', [F.text, F.textColor, F.textSize, ['textPos', 'select', 'Vị trí chữ', { top: 'Trên', middle: 'Giữa', bottom: 'Dưới' }]]],
+    ['Tọa độ', 'pts']],
+    long: POS_SPEC, short: POS_SPEC,
+  };
+  const STYLE_NAMES = { solid: 'Liền', dashed: 'Nét đứt', dotted: 'Chấm' };
+  const SIZES = [10, 11, 12, 14, 16, 20, 24, 28];
+
+  function control([k, type, , extra], v) {
+    const opts = (o, cur) => Object.entries(o).map(([val, txt]) => `<option value="${val}"${String(val) === String(cur) ? ' selected' : ''}>${txt}</option>`).join('');
+    switch (type) {
+      case 'color': return `<input type="color" class="sw" data-k="${k}" value="${v}">`;
+      case 'width': return widthSelect(`data-k="${k}"`, v);
+      case 'style': return `<select data-k="${k}">${opts(STYLE_NAMES, v)}</select>`;
+      case 'size': return `<select data-k="${k}">${opts(Object.fromEntries(SIZES.map((n) => [n, n + 'px'])), v)}</select>`;
+      case 'select': return `<select data-k="${k}">${opts(extra, v)}</select>`;
+      case 'bool': return `<input type="checkbox" data-k="${k}"${v ? ' checked' : ''}>`;
+      case 'pct': return `<input type="number" min="0" max="100" step="5" data-k="${k}" value="${v}">`;
+      default: return `<input type="text" data-k="${k}" value="${esc(v || '')}" placeholder="(không có)">`;
+    }
+  }
+  function coordRows(d, kind) {
+    const step = S.pip / 10;
+    const row = (k, txt, v) => `<label>${txt}</label><input type="number" step="${step}" data-c="${k}" value="${fmtPrice(v)}">`;
+    if (kind === 'pos') return row('entry', 'Giá Entry', d.pts[0].p) + row('tp', 'Giá TP', d.tp) + row('sl', 'Giá SL', d.sl);
+    if (d.pts.length === 1) return row('p0', 'Giá', d.pts[0].p);
+    return row('p0', 'Giá điểm 1', d.pts[0].p) + row('p1', 'Giá điểm 2', d.pts[1].p);
+  }
+  function readStyle(body) {
+    const v = {};
+    body.querySelectorAll('[data-k]').forEach((el) => {
+      const k = el.dataset.k;
+      if (el.type === 'checkbox') v[k] = el.checked;
+      else if (el.tagName === 'SELECT' && /^\d+$/.test(el.value)) v[k] = +el.value;
+      else if (el.type === 'number') v[k] = Math.max(0, Math.min(100, +el.value || 0));
+      else v[k] = el.value;
+    });
+    return v;
+  }
+  function applyCoords(d, body) {
+    const c = {};
+    body.querySelectorAll('[data-c]').forEach((el) => { c[el.dataset.c] = parseFloat(el.value); });
+    if (Object.values(c).some((x) => !Number.isFinite(x))) return 'Giá không hợp lệ.';
+    if (c.entry != null) {
+      const long = d.type === 'long';
+      if (long ? !(c.sl < c.entry && c.entry < c.tp) : !(c.tp < c.entry && c.entry < c.sl)) {
+        return long ? 'Long cần SL < Entry < TP.' : 'Short cần TP < Entry < SL.';
+      }
+      d.pts = [{ t: d.pts[0].t, p: round(c.entry) }, { t: d.pts[1].t, p: round(c.entry) }];
+      d.tp = round(c.tp); d.sl = round(c.sl);
+      return null;
+    }
+    d.pts = d.pts.map((pt, i) => (c['p' + i] != null ? { t: pt.t, p: round(c['p' + i]) } : pt));
+    return null;
+  }
+
+  function openSettings(d) {
+    if (d.type === 'fib') { openFibSettings(d); return; }
+    const spec = SPEC[d.type];
+    if (!spec) return;
+    const render = (vals) => {
+      const html = spec.map(([title, fields]) => `<div class="ind-group">${title}</div>` + (typeof fields === 'string'
+        ? coordRows(d, fields)
+        : fields.map((f) => `<label>${f[2]}</label>${control(f, vals[f[0]])}`).join(''))).join('');
+      openModal(`${NAMES[d.type]} · Cài đặt`, `<div class="ind-form">${html}</div>
+        <div class="modal-actions">
+          <button id="ds-factory" title="Trả về kiểu gốc">Khôi phục gốc</button>
+          <button id="ds-save-def" title="Các hình vẽ loại này vẽ sau sẽ dùng kiểu này">Lưu làm mặc định</button>
+          <span style="flex:1"></span>
+          <button id="ds-cancel">Hủy</button><button id="ds-ok" class="active">OK</button>
+        </div>`);
+      const body = $('modal-body');
+      $('ds-cancel').onclick = closeModal;
+      $('ds-factory').onclick = () => render({ ...TYPE_DEF[d.type], text: readStyle(body).text });
+      $('ds-save-def').onclick = () => {
+        const { text, ...style } = readStyle(body);
+        setUserDef(d.type === 'long' || d.type === 'short' ? ['long', 'short'] : [d.type], style);
+        setStatus(`Đã lưu làm mặc định cho ${NAMES[d.type]}.`);
+      };
+      $('ds-ok').onclick = () => {
+        const err = applyCoords(d, body);
+        if (err) { setStatus(err, true); return; }
+        Object.assign(d, readStyle(body));
+        closeModal();
+        renderProps(); dirty(); save();
+      };
+    };
+    const vals = {};
+    for (const [, fields] of spec) if (Array.isArray(fields)) for (const [k] of fields) vals[k] = k === 'width' ? widthOf(d) : opt(d, k);
+    render(vals);
+  }
+
+  function fibForm(o, col, width) {
+    const EXT = { none: 'Không kéo dài', right: 'Sang phải', left: 'Sang trái', both: 'Hai phía' };
+    const chk = (k, v, text) => `<label class="fib-chk"><input type="checkbox" data-f="${k}"${v ? ' checked' : ''}> ${text}</label>`;
+    const levels = o.levels.map((L, i) =>
+      `<div class="fib-lv"><input type="checkbox" data-lon="${i}"${L.on ? ' checked' : ''}>` +
+      `<input type="number" step="0.001" data-lv="${i}" value="${L.l}">` +
+      `<input type="color" class="sw" data-lc="${i}" value="${L.c}"></div>`).join('');
+    return `<div class="fib-form">
+      <div class="fib-opts">
+        <div>${chk('trend', o.trend, 'Đường xu hướng')} <input type="color" class="sw" data-f="color" value="${col}"></div>
+        <div><label>Độ dày mức</label> ${widthSelect('data-f="width"', width)}</div>
+        <div><label>Kéo dài</label> <select data-f="ext">${Object.entries(EXT).map(([k, v]) => `<option value="${k}"${k === o.ext ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
+        <div>${chk('fill', o.fill, 'Tô nền')}</div>
+        <div>${chk('showLevel', o.showLevel, 'Hiện mức')} ${chk('showPrice', o.showPrice, 'Hiện giá')}</div>
+        <div>${chk('useOne', !!o.oneColor, 'Dùng một màu')} <input type="color" class="sw" data-f="oneColor" value="${o.oneColor || '#2962ff'}"></div>
+      </div>
+      <div class="fib-levels">${levels}</div>
+      <div class="modal-actions">
+        <button id="fib-factory" title="Trả về bộ mức gốc">Khôi phục gốc</button>
+        <button id="fib-save-def" title="Các Fib vẽ sau sẽ dùng thông số này">Lưu làm mặc định</button>
+        <span style="flex:1"></span>
+        <button id="fib-cancel">Hủy</button><button id="fib-ok" class="active">OK</button>
+      </div></div>`;
+  }
+  function readFibForm(body) {
+    const f = (k) => body.querySelector(`[data-f="${k}"]`);
+    return {
+      levels: [...body.querySelectorAll('[data-lv]')].map((el) => {
+        const i = el.dataset.lv;
+        return { l: parseFloat(el.value), c: body.querySelector(`[data-lc="${i}"]`).value, on: body.querySelector(`[data-lon="${i}"]`).checked };
+      }).filter((L) => Number.isFinite(L.l)),
+      trend: f('trend').checked, fill: f('fill').checked, showLevel: f('showLevel').checked, showPrice: f('showPrice').checked,
+      ext: f('ext').value, oneColor: f('useOne').checked ? f('oneColor').value : null,
+      color: f('color').value, width: +f('width').value,
+    };
+  }
+  function openFibSettings(d) {
+    const cur = d.levels ? d : { ...fibFactory(), ext: fibExt(d) };
+    const o = JSON.parse(JSON.stringify({
+      levels: cur.levels, trend: cur.trend !== false, fill: cur.fill !== false,
+      showLevel: cur.showLevel !== false, showPrice: cur.showPrice !== false, ext: fibExt(cur), oneColor: cur.oneColor || null,
+    }));
+    const render = (opts, col, width) => {
+      openModal('Fib Retracement · Cài đặt', fibForm(opts, col, width));
+      const body = $('modal-body');
+      $('fib-cancel').onclick = closeModal;
+      $('fib-factory').onclick = () => { const v = readFibForm(body); render(fibFactory(), v.color, v.width); };
+      $('fib-save-def').onclick = () => {
+        setUserDef(['fib'], readFibForm(body));
+        setStatus('Đã lưu làm mặc định cho Fib vẽ sau.');
+      };
+      $('fib-ok').onclick = () => {
+        Object.assign(d, readFibForm(body));
+        delete d.extend;
+        closeModal();
+        renderProps(); dirty(); save();
+      };
+    };
+    render(o, colorOf(d), widthOf(d));
+  }
+
+  // ------------------------------------------------------------ dragging
   function applyDrag(x, y) {
     const d = drag.d, o = drag.orig;
     if (drag.h === 'body') {
@@ -452,6 +755,11 @@ const Draw = (() => {
       }
       return;
     }
+    if (d.type === 'rect') {
+      const h = String(drag.h), setT = (i) => { d.pts[i] = { t: pt.t, p: d.pts[i].p }; }, setP = (j) => { d.pts[j] = { t: d.pts[j].t, p: pt.p }; };
+      if (h[0] === 'c') { setT(+h[1]); setP(+h[2]); } else if (h[0] === 'x') setT(+h[1]); else if (h[0] === 'y') setP(+h[1]);
+      return;
+    }
     if (d.type === 'hline') { d.pts[0] = { t: d.pts[0].t, p: pt.p }; return; }
     if (d.type === 'vline') { d.pts[0] = { t: pt.t, p: d.pts[0].p }; return; }
     d.pts[drag.h] = { t: pt.t, p: pt.p };
@@ -468,7 +776,7 @@ const Draw = (() => {
       if (!pending) {
         pending = tool === 'measure' ? { type: 'measure', pts: [P, { ...P }] } : newDrawing(tool, [P, { ...P }]);
         measure = null;
-        setStatus('Click điểm thứ hai.');
+        setStatus(tool === 'rect' ? 'Click góc đối diện.' : 'Click điểm thứ hai.');
         dirty();
         return;
       }
@@ -536,13 +844,22 @@ const Draw = (() => {
   });
   function cursorFor(id) {
     if (id === 'body') return 'move';
-    if (id === 'tp' || id === 'sl' || id === 'entryP') return 'ns';
-    if (id === 'width') return 'ew';
+    if (id === 'tp' || id === 'sl' || id === 'entryP' || id === 'y0' || id === 'y1') return 'ns';
+    if (id === 'width' || id === 'x0' || id === 'x1') return 'ew';
     return 'handle';
   }
   function setCursor(kind) {
     for (const k of ['draw', 'move', 'handle', 'ns', 'ew']) wrap.classList.toggle('cur-' + k, k === kind);
   }
+
+  wrap.addEventListener('dblclick', (e) => {
+    const { x, y } = local(e);
+    const hit = !S.tool && x <= paneW() && y <= paneH() ? hitTest(x, y) : null;
+    if (!hit) return;
+    e.preventDefault(); e.stopPropagation();
+    select(hit.d);
+    openSettings(hit.d);
+  }, true);
 
   wrap.addEventListener('contextmenu', (e) => {
     const { x, y } = local(e);
