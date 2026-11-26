@@ -401,6 +401,7 @@ const Draw = (() => {
       sel.width = +e.target.value;
       lastWidth[sel.type] = sel.width;
       localStorage.setItem('fxlab_draw_width', JSON.stringify(lastWidth));
+      e.target.blur();
       dirty(); save();
     }
   });
@@ -504,6 +505,8 @@ const Draw = (() => {
     if (e.button !== 0 || e.target.closest('#legend .lg-row, #draw-props')) return;
     const { x, y } = local(e);
     if (x > paneW() || y > paneH()) return;
+    // preventDefault below keeps focus on the last input/select, which would swallow Delete / arrow keys.
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
     if (measure && !S.tool) { measure = null; dirty(); }
     if (S.tool) { e.preventDefault(); e.stopPropagation(); onToolClick(x, y); return; }
     const hit = hitTest(x, y);
@@ -540,6 +543,14 @@ const Draw = (() => {
   function setCursor(kind) {
     for (const k of ['draw', 'move', 'handle', 'ns', 'ew']) wrap.classList.toggle('cur-' + k, k === kind);
   }
+
+  wrap.addEventListener('contextmenu', (e) => {
+    const { x, y } = local(e);
+    const hit = !S.tool && x <= paneW() && y <= paneH() ? hitTest(x, y) : null;
+    if (!hit) return;
+    e.preventDefault();
+    select(hit.d);
+  });
 
   window.addEventListener('mouseup', () => {
     if (!drag) return;

@@ -49,7 +49,8 @@ $('positions').addEventListener('click', (e) => {
 document.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') e.target.blur(); });
 
 document.addEventListener('keydown', (e) => {
-  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+  const typing = e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && !['color', 'checkbox', 'button'].includes(e.target.type));
+  if (typing || (e.target.tagName === 'SELECT' && e.key !== 'Delete' && e.key !== 'Escape')) return;
   if (!$('modal').classList.contains('hidden')) { if (e.key === 'Escape') closeModal(); return; }
   if (e.key === 'ArrowRight') { e.preventDefault(); stepForward(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); stepBack(); }
