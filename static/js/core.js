@@ -4,10 +4,12 @@
 const TF_SEC = { M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400, W1: 604800 };
 const DEFAULT_SETTINGS = { balance: 10000, risk: 1, sl: 20, tp: 40, spread: 1, otype: 'market' };
 const INITIAL_BARS = 150;
+// Set by build_static.py: data comes from pre-built JSON files instead of the Flask API.
+const STATIC_SITE = !!window.FX_STATIC;
 const $ = (id) => document.getElementById(id);
 
 const S = {
-  symbol: 'EURUSD', tf: 'H1', pip: 0.0001, digits: 5, quoteUsd: true,
+  symbol: 'EURUSD', tf: 'H1', pip: 0.0001, digits: 5, quoteUsd: true, contract: 100000,
   t: [], bars: [], end: 0,
   replay: false, timer: null, tz: 7,
   tool: null,
@@ -73,7 +75,7 @@ const countClosed = (cursor) => upperBound(S.t, cursor - TF_SEC[S.tf]);
 const cursorUtc = () => (S.end > 0 ? S.t[S.end - 1] + TF_SEC[S.tf] : 0);
 const curBar = () => S.bars[S.end - 1];
 const spreadPx = () => S.settings.spread * S.pip;
-const pipValue = (price) => (S.quoteUsd ? 100000 * S.pip : (100000 * S.pip) / price);
+const pipValue = (price) => (S.quoteUsd ? S.contract * S.pip : (S.contract * S.pip) / price);
 
 // Fractional bar index <-> UTC seconds; extrapolates past both ends so drawings can live in empty space.
 function timeToLogical(utc) {
@@ -148,7 +150,10 @@ async function loadData(tf, cursor) {
   setStatus(`Đang tải ${S.symbol} ${tf}...`);
   let j;
   try {
-    const r = await fetch(`/api/candles?symbol=${S.symbol}&tf=${tf}`);
+    const r = STATIC_SITE
+      ? await fetch(`/api/candles/${S.symbol}_${tf}.json`, { cache: 'no-cache' })
+      : await fetch(`/api/candles?symbol=${S.symbol}&tf=${tf}`);
+    if (STATIC_SITE && !r.ok) throw new Error(`chưa có dữ liệu ${S.symbol} ${tf} trên web`);
     j = await r.json();
     if (!r.ok) throw new Error(j.error || r.status);
   } catch (e) {
@@ -161,7 +166,7 @@ async function loadData(tf, cursor) {
     setStatus(`Khung ${tf} chỉ có dữ liệu từ ${fmt(j.data[0][0])}, không có tại thời điểm replay ${fmt(cursor)}.`, true);
     return false;
   }
-  S.tf = tf; S.pip = j.pip; S.digits = j.digits; S.quoteUsd = j.quote_usd;
+  S.tf = tf; S.pip = j.pip; S.digits = j.digits; S.quoteUsd = j.quote_usd; S.contract = j.contract || 100000;
   const off = S.tz * 3600;
   S.t = j.data.map((d) => d[0]);
   S.bars = j.data.map((d) => ({ time: d[0] + off, open: d[1], high: d[2], low: d[3], close: d[4] }));
@@ -213,6 +218,19 @@ async function updateData() {
   stopPlay();
   const btn = $('btn-update');
   btn.disabled = true;
+  if (STATIC_SITE) {
+    try {
+      const m = await (await fetch('/api/meta.json', { cache: 'no-cache' })).json();
+      if (await loadData(S.tf, S.replay ? cursorUtc() : null)) {
+        setStatus(`Đã tải lại. Dữ liệu trên web tự cập nhật mỗi giờ, lần cuối lúc ${fmt(m.updated)}.`);
+      }
+    } catch (e) {
+      setStatus(`Lỗi tải lại dữ liệu: ${e.message}`, true);
+    } finally {
+      btn.disabled = false;
+    }
+    return;
+  }
   setStatus('Đang tải dữ liệu mới từ Yahoo (M5, M15, M30, H1, D1)...');
   try {
     const r = await fetch(`/api/update?symbol=${S.symbol}`, { method: 'POST' });
@@ -316,6 +334,8 @@ function togglePlay() {
 
 function updateUI() {
   for (const id of ['btn-back', 'btn-play', 'btn-next', 'btn-exit-replay', 'btn-buy', 'btn-sell']) $(id).disabled = !S.replay;
+  document.querySelector('[data-tool="replay"]').classList.toggle('replay-on', S.replay);
+  $('btn-exit-replay').classList.toggle('replay-on', S.replay);
   renderPositions();
   renderStats();
   updateLotPreview();

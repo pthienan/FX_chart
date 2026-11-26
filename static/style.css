@@ -14,6 +14,9 @@ button, select, input {
 button { cursor: pointer; white-space: nowrap; }
 button:hover { background: #2a2e39; }
 button.active { background: #2962ff; border-color: #2962ff; color: #fff; }
+button.replay-on { background: #f0b90b; border-color: #f0b90b; color: #131722; font-weight: 600; }
+button.replay-on.active { background: #2962ff; border-color: #2962ff; color: #fff; }
+#btn-exit-replay.replay-on { background: #f23645; border-color: #f23645; color: #fff; }
 button:disabled { opacity: .4; cursor: default; }
 input:focus, select:focus { border-color: #2962ff; }
 input[type="checkbox"] { padding: 0; margin: 0 4px 0 0; vertical-align: middle; }

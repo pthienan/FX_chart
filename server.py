@@ -22,6 +22,8 @@ SYMBOLS = {
     "GBPUSD": {"yahoo": "GBPUSD=X", "pip": 0.0001, "digits": 5, "quote_usd": True},
     "AUDUSD": {"yahoo": "AUDUSD=X", "pip": 0.0001, "digits": 5, "quote_usd": True},
     "USDJPY": {"yahoo": "USDJPY=X", "pip": 0.01, "digits": 3, "quote_usd": False},
+    # Yahoo has no spot XAUUSD; COMEX gold futures track it with a small premium. 1 lot = 100 oz.
+    "XAUUSD": {"yahoo": "GC=F", "pip": 0.1, "digits": 2, "quote_usd": True, "contract": 100},
 }
 
 # Yahoo limits: intraday < 1h only ~60 days back, 1h ~730 days.
@@ -110,6 +112,22 @@ def to_unix(index):
     return ((index - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(seconds=1)).astype("int64")
 
 
+def candles_payload(sym, tf):
+    df = get_frame(sym, tf)
+    info = SYMBOLS[sym]
+    d = info["digits"]
+    rows = list(zip(to_unix(df.index).tolist(), df["open"].round(d).tolist(),
+                    df["high"].round(d).tolist(), df["low"].round(d).tolist(),
+                    df["close"].round(d).tolist()))
+    return dict(symbol=sym, tf=tf, pip=info["pip"], digits=d, quote_usd=info["quote_usd"],
+                contract=info.get("contract", 100000), data=rows)
+
+
+def indicator_files():
+    folder = STATIC / "indicators"
+    return sorted(p.name for p in folder.glob("*.js") if not p.name.startswith("_")) if folder.exists() else []
+
+
 @app.get("/")
 def index():
     return send_from_directory(STATIC, "index.html")
@@ -122,9 +140,7 @@ def api_symbols():
 
 @app.get("/api/indicators")
 def api_indicators():
-    folder = STATIC / "indicators"
-    files = sorted(p.name for p in folder.glob("*.js") if not p.name.startswith("_")) if folder.exists() else []
-    return jsonify(files)
+    return jsonify(indicator_files())
 
 
 @app.get("/api/candles")
@@ -134,16 +150,9 @@ def api_candles():
     if sym not in SYMBOLS or (tf not in SOURCES and tf not in DERIVED):
         return jsonify(error="symbol/tf không hợp lệ"), 400
     try:
-        df = get_frame(sym, tf)
+        return jsonify(candles_payload(sym, tf))
     except Exception as e:  # noqa: BLE001
         return jsonify(error=str(e)), 500
-    info = SYMBOLS[sym]
-    d = info["digits"]
-    rows = list(zip(to_unix(df.index).tolist(), df["open"].round(d).tolist(),
-                    df["high"].round(d).tolist(), df["low"].round(d).tolist(),
-                    df["close"].round(d).tolist()))
-    return jsonify(symbol=sym, tf=tf, pip=info["pip"], digits=d,
-                   quote_usd=info["quote_usd"], data=rows)
 
 
 @app.post("/api/update")

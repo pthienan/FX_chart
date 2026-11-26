@@ -75,7 +75,7 @@ function loadScript(src) {
 
 async function loadIndicatorPlugins() {
   let files = [];
-  try { files = await (await fetch('/api/indicators')).json(); } catch (e) { files = []; }
+  try { files = await (await fetch(STATIC_SITE ? '/api/indicators.json' : '/api/indicators')).json(); } catch (e) { files = []; }
   const failed = [];
   let current = null;
   const onErr = (ev) => { if (current && ev.filename && ev.filename.includes(current)) failed.push(`${current}: ${ev.message}`); };
@@ -94,7 +94,11 @@ async function loadIndicatorPlugins() {
   await loadIndicatorPlugins();
   Ind.init();
   let syms = ['EURUSD'];
-  try { syms = await (await fetch('/api/symbols')).json(); } catch (e) { setStatus('Không kết nối được server.', true); }
+  try { syms = await (await fetch(STATIC_SITE ? '/api/symbols.json' : '/api/symbols')).json(); } catch (e) { setStatus('Không kết nối được server.', true); }
+  if (STATIC_SITE) {
+    $('btn-update').textContent = '⟳ Tải lại dữ liệu';
+    $('btn-update').title = 'Dữ liệu trên web được GitHub Actions cập nhật tự động mỗi giờ';
+  }
   $('symbol').innerHTML = syms.map((s) => `<option>${s}</option>`).join('');
   const sym = localStorage.getItem('fxlab_symbol');
   const start = syms.includes(sym) ? sym : syms[0];
