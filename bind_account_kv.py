@@ -6,6 +6,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
 TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")
@@ -45,6 +46,18 @@ def main():
         spaces = cfg.setdefault("kv_namespaces", {})
         spaces["FXLAB"] = {"namespace_id": ns_id}
     call("PATCH", f"/accounts/{ACCOUNT}/pages/projects/{PROJECT}", {"deployment_configs": configs})
+    # wrangler pages deploy only sends bindings listed in this file. A project setting alone
+    # does not reach the new deployment, so registration sees no FXLAB binding.
+    Path("wrangler.toml").write_text(
+        f'name = "{PROJECT}"\n'
+        'compatibility_date = "2026-11-27"\n'
+        "\n"
+        "[[kv_namespaces]]\n"
+        'binding = "FXLAB"\n'
+        f'id = "{ns_id}"\n'
+        f'preview_id = "{ns_id}"\n',
+        encoding="utf-8",
+    )
     print(f"Đã gắn KV {TITLE} ({ns_id}) vào {PROJECT}")
 
 
