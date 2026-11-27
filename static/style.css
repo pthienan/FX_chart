@@ -126,6 +126,8 @@ td.sell { color: #ef5350; font-weight: 600; }
 .ind-form .ind-group { grid-column: 1 / -1; margin-top: 6px; padding-top: 6px; border-top: 1px solid #2a2e39;
   color: #d1d4dc; font-weight: 600; }
 .ind-form input[type="text"] { width: 100%; }
+.icon-pick { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.icon-pick button { width: 36px; height: 36px; padding: 0; font-size: 18px; line-height: 1; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; }
 
 .fib-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding-bottom: 10px; border-bottom: 1px solid #2a2e39; }

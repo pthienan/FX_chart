@@ -22,7 +22,24 @@ const Draw = (() => {
   });
   const fibExt = (d) => d.ext || (d.extend ? 'right' : 'none');
 
-  const POINTS = { trend: 2, fib: 2, measure: 2, rect: 2, hline: 1, vline: 1, long: 1, short: 1 };
+  const POINTS = { trend: 2, fib: 2, measure: 2, rect: 2, hline: 1, vline: 1, long: 1, short: 1, icon: 1 };
+  const ICONS = [
+    { id: 'arrowUp', name: 'Mũi tên lên', glyph: '↑' },
+    { id: 'arrowDown', name: 'Mũi tên xuống', glyph: '↓' },
+    { id: 'arrowLeft', name: 'Mũi tên trái', glyph: '←' },
+    { id: 'arrowRight', name: 'Mũi tên phải', glyph: '→' },
+    { id: 'flag', name: 'Cờ', glyph: '⚑' },
+    { id: 'star', name: 'Sao', glyph: '★' },
+    { id: 'check', name: 'Đúng', glyph: '✓' },
+    { id: 'cross', name: 'Sai', glyph: '✕' },
+    { id: 'triangleUp', name: 'Tam giác lên', glyph: '▲' },
+    { id: 'triangleDown', name: 'Tam giác xuống', glyph: '▼' },
+    { id: 'circle', name: 'Tròn', glyph: '●' },
+    { id: 'diamond', name: 'Thoi', glyph: '◆' },
+  ];
+  const ICON_SIZES = [16, 20, 24, 28, 32, 40, 48, 64];
+  const iconId = (d) => ICONS.some((ic) => ic.id === d.icon) ? d.icon : 'arrowUp';
+  const iconSize = (d) => ICON_SIZES.includes(opt(d, 'size')) ? opt(d, 'size') : 28;
   const POS = {
     width: 1, tpColor: '#26a69a', slColor: '#ef5350', fillOpacity: 22, alwaysStats: false, outcome: true,
   };
@@ -37,6 +54,7 @@ const Draw = (() => {
     },
     fib: { color: '#787b86', width: 1 },
     long: POS, short: POS,
+    icon: { color: '#2962ff', icon: 'arrowUp', size: 28 },
   };
   const DASH = { solid: [], dashed: [8, 5], dotted: [2, 3] };
   const opt = (d, k) => (d[k] !== undefined && d[k] !== null ? d[k] : (TYPE_DEF[d.type] || {})[k]);
@@ -73,6 +91,7 @@ const Draw = (() => {
     long: 'Long Position: click tại giá vào lệnh. Kéo mép trên vùng xanh = TP, mép dưới vùng đỏ = SL, đường giữa = Entry, mép phải = độ rộng, kéo trong box = di chuyển.',
     short: 'Short Position: click tại giá vào lệnh. Kéo mép vùng xanh = TP, mép vùng đỏ = SL, đường giữa = Entry, mép phải = độ rộng, kéo trong box = di chuyển.',
     measure: 'Đo: click điểm thứ nhất.',
+    icon: 'Icon: click lên chart để đặt biểu tượng. Double-click để đổi loại, màu và cỡ.',
   };
   const HIT = 6;
   const MAGNET_PX = 14;
@@ -160,6 +179,45 @@ const Draw = (() => {
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(s, x, ph + 11);
   }
+  function drawGlyph(id, x, y, size, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(size / 2, size / 2);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 0.22;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    const poly = (pts, fill = true) => {
+      ctx.beginPath();
+      pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+      ctx.closePath();
+      if (fill) ctx.fill(); else ctx.stroke();
+    };
+    if (id === 'arrowDown' || id === 'arrowLeft' || id === 'arrowRight' || id === 'triangleDown') {
+      ctx.rotate(id === 'arrowDown' || id === 'triangleDown' ? Math.PI : id === 'arrowLeft' ? -Math.PI / 2 : Math.PI / 2);
+      id = id.startsWith('triangle') ? 'triangleUp' : 'arrowUp';
+    }
+    if (id === 'arrowUp') poly([[0, -0.95], [0.62, -0.08], [0.26, -0.08], [0.26, 0.95], [-0.26, 0.95], [-0.26, -0.08], [-0.62, -0.08]]);
+    else if (id === 'flag') {
+      ctx.fillRect(-0.72, -0.92, 0.16, 1.84);
+      poly([[-0.56, -0.92], [0.78, -0.52], [-0.56, -0.12]]);
+    } else if (id === 'star') {
+      const pts = [];
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.4 : 0.95;
+        pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+      }
+      poly(pts);
+    } else if (id === 'check') {
+      ctx.beginPath(); ctx.moveTo(-0.72, 0.02); ctx.lineTo(-0.22, 0.58); ctx.lineTo(0.82, -0.62); ctx.stroke();
+    } else if (id === 'cross') {
+      ctx.beginPath(); ctx.moveTo(-0.62, -0.62); ctx.lineTo(0.62, 0.62); ctx.moveTo(0.62, -0.62); ctx.lineTo(-0.62, 0.62); ctx.stroke();
+    } else if (id === 'triangleUp') poly([[0, -0.9], [0.86, 0.72], [-0.86, 0.72]]);
+    else if (id === 'circle') { ctx.beginPath(); ctx.arc(0, 0, 0.78, 0, Math.PI * 2); ctx.fill(); }
+    else if (id === 'diamond') poly([[0, -0.92], [0.72, 0], [0, 0.92], [-0.72, 0]]);
+    ctx.restore();
+  }
   function extended(a, b, pw) {
     if (Math.abs(b.x - a.x) < 1e-6) return b;
     const xt = b.x > a.x ? pw + 10 : -10;
@@ -242,6 +300,7 @@ const Draw = (() => {
         if (!g) return [];
         return [{ id: 'tp', x: g.L, y: g.yt }, { id: 'sl', x: g.L, y: g.ys }, { id: 'entry', x: g.L, y: g.ye }, { id: 'width', x: g.R, y: g.ye }];
       }
+      case 'icon': { const q = xy(d.pts[0]); return q ? [{ id: 0, x: q.x, y: q.y }] : []; }
       default: return [];
     }
   }
@@ -274,6 +333,12 @@ const Draw = (() => {
       case 'long': case 'short': {
         const g = posGeom(d);
         return !!g && x >= g.L && x <= g.R && y >= Math.min(g.yt, g.ys) && y <= Math.max(g.yt, g.ys);
+      }
+      case 'icon': {
+        const q = xy(d.pts[0]);
+        if (!q) return false;
+        const s = iconSize(d) / 2 + 4;
+        return Math.abs(x - q.x) <= s && Math.abs(y - q.y) <= s;
       }
       default: return false;
     }
@@ -404,6 +469,19 @@ const Draw = (() => {
         if (active) for (const h of handles(d)) handle(h.x, h.y, h.id === 'tp' ? tpC : h.id === 'sl' ? slC : '#d1d4dc');
         break;
       }
+      case 'icon': {
+        const q = xy(d.pts[0]);
+        if (!q) return;
+        const size = iconSize(d);
+        drawGlyph(iconId(d), q.x, q.y, size, col);
+        if (active) {
+          ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+          ctx.strokeRect(q.x - size / 2 - 4, q.y - size / 2 - 4, size + 8, size + 8);
+          ctx.setLineDash([]);
+          handle(q.x, q.y, col);
+        }
+        break;
+      }
       case 'measure': {
         const a = xy(d.pts[0]), b = xy(d.pts[1]);
         if (!a || !b) return;
@@ -503,7 +581,12 @@ const Draw = (() => {
     if (d.type !== 'long' && d.type !== 'short') {
       parts.push(`<input type="color" class="sw" data-a="color" value="${colorOf(d)}" title="Màu">`);
     }
-    parts.push(widthSelect('data-a="width" title="Độ dày"', widthOf(d)));
+    if (d.type === 'icon') {
+      const sz = iconSize(d);
+      parts.push(`<select data-a="size" title="Cỡ">${ICON_SIZES.map((n) => `<option value="${n}"${n === sz ? ' selected' : ''}>${n}</option>`).join('')}</select>`);
+    } else {
+      parts.push(widthSelect('data-a="width" title="Độ dày"', widthOf(d)));
+    }
     if (d.type === 'trend') {
       parts.push(`<button data-a="extend" class="${opt(d, 'extend') ? 'active' : ''}" title="Kéo dài sang phải">Kéo dài →</button>`);
     }
@@ -527,6 +610,11 @@ const Draw = (() => {
       setUserDef(sel.type === 'long' || sel.type === 'short' ? ['long', 'short'] : [sel.type], { width: sel.width });
       e.target.blur();
       dirty(); save();
+    } else if (e.target.dataset.a === 'size' && sel) {
+      sel.size = +e.target.value;
+      setUserDef([sel.type], { size: sel.size });
+      e.target.blur();
+      dirty(); save();
     }
   });
   $('draw-props').addEventListener('click', (e) => {
@@ -545,7 +633,7 @@ const Draw = (() => {
   });
 
   // ------------------------------------------------------------ settings dialogs
-  const NAMES = { trend: 'Trendline', hline: 'Đường ngang', vline: 'Đường dọc', rect: 'Rectangle', long: 'Long Position', short: 'Short Position' };
+  const NAMES = { trend: 'Trendline', hline: 'Đường ngang', vline: 'Đường dọc', rect: 'Rectangle', long: 'Long Position', short: 'Short Position', icon: 'Icon' };
   const F = {
     color: ['color', 'color', 'Màu'],
     width: ['width', 'width', 'Độ dày'],
@@ -573,6 +661,7 @@ const Draw = (() => {
     ['Chữ', [F.text, F.textColor, F.textSize, ['textPos', 'select', 'Vị trí chữ', { top: 'Trên', middle: 'Giữa', bottom: 'Dưới' }]]],
     ['Tọa độ', 'pts']],
     long: POS_SPEC, short: POS_SPEC,
+    icon: [['Biểu tượng', 'icons'], ['Kiểu', [['color', 'color', 'Màu'], ['size', 'px', 'Cỡ', ICON_SIZES]]]],
   };
   const STYLE_NAMES = { solid: 'Liền', dashed: 'Nét đứt', dotted: 'Chấm' };
   const SIZES = [10, 11, 12, 14, 16, 20, 24, 28];
@@ -584,11 +673,17 @@ const Draw = (() => {
       case 'width': return widthSelect(`data-k="${k}"`, v);
       case 'style': return `<select data-k="${k}">${opts(STYLE_NAMES, v)}</select>`;
       case 'size': return `<select data-k="${k}">${opts(Object.fromEntries(SIZES.map((n) => [n, n + 'px'])), v)}</select>`;
+      case 'px': return `<select data-k="${k}">${opts(Object.fromEntries((extra || SIZES).map((n) => [n, n + 'px'])), v)}</select>`;
       case 'select': return `<select data-k="${k}">${opts(extra, v)}</select>`;
       case 'bool': return `<input type="checkbox" data-k="${k}"${v ? ' checked' : ''}>`;
       case 'pct': return `<input type="number" min="0" max="100" step="5" data-k="${k}" value="${v}">`;
       default: return `<input type="text" data-k="${k}" value="${esc(v || '')}" placeholder="(không có)">`;
     }
+  }
+  function iconPicker(cur) {
+    const id = ICONS.some((ic) => ic.id === cur) ? cur : 'arrowUp';
+    const btns = ICONS.map((ic) => `<button type="button" data-icon="${ic.id}" class="${ic.id === id ? 'active' : ''}" title="${ic.name}">${ic.glyph}</button>`).join('');
+    return `<div class="icon-pick">${btns}<input type="hidden" data-k="icon" value="${id}"></div>`;
   }
   function coordRows(d, kind) {
     const step = S.pip / 10;
@@ -631,7 +726,7 @@ const Draw = (() => {
     if (!spec) return;
     const render = (vals) => {
       const html = spec.map(([title, fields]) => `<div class="ind-group">${title}</div>` + (typeof fields === 'string'
-        ? coordRows(d, fields)
+        ? (fields === 'icons' ? iconPicker(vals.icon) : coordRows(d, fields))
         : fields.map((f) => `<label>${f[2]}</label>${control(f, vals[f[0]])}`).join(''))).join('');
       openModal(`${NAMES[d.type]} · Cài đặt`, `<div class="ind-form">${html}</div>
         <div class="modal-actions">
@@ -642,6 +737,13 @@ const Draw = (() => {
         </div>`);
       const body = $('modal-body');
       $('ds-cancel').onclick = closeModal;
+      body.querySelectorAll('[data-icon]').forEach((btn) => {
+        btn.onclick = () => {
+          const hid = body.querySelector('[data-k="icon"]');
+          if (hid) hid.value = btn.dataset.icon;
+          body.querySelectorAll('[data-icon]').forEach((b) => b.classList.toggle('active', b === btn));
+        };
+      });
       $('ds-factory').onclick = () => render({ ...TYPE_DEF[d.type], text: readStyle(body).text });
       $('ds-save-def').onclick = () => {
         const { text, ...style } = readStyle(body);
@@ -658,6 +760,7 @@ const Draw = (() => {
     };
     const vals = {};
     for (const [, fields] of spec) if (Array.isArray(fields)) for (const [k] of fields) vals[k] = k === 'width' ? widthOf(d) : opt(d, k);
+    if (d.type === 'icon') vals.icon = iconId(d);
     render(vals);
   }
 
@@ -790,7 +893,7 @@ const Draw = (() => {
         return;
       }
       if (done.type === 'measure') { measure = done; dirty(); } else commit(done);
-    } else if (tool === 'hline' || tool === 'vline') {
+    } else if (tool === 'hline' || tool === 'vline' || tool === 'icon') {
       commit(newDrawing(tool, [P]));
     } else if (tool === 'long' || tool === 'short') {
       // Sized to the current view (as TradingView does), keeping the TP:SL ratio from the order settings.
