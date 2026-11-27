@@ -1,0 +1,19 @@
+---
+description: FX Lab chart interactions follow TradingView; skip the rest of the site
+alwaysApply: true
+---
+
+# Học TradingView, không clone cả web
+
+Mọi thao tác trên chart của FX Lab làm giống TradingView. Người dùng đang dựng chart tập trade, không phải bản sao trang TradingView.
+
+Khi thêm hoặc sửa một chức năng chart, đối chiếu cách TradingView làm đúng việc đó: nút nào bấm ra gì, kéo thế nào, lùi một bước hoàn tác việc vừa rồi.
+
+Đã chốt:
+
+- Khung giờ: thanh chỉ hiện khung được ghim. Mũi tên xổ xuống để đổi khung và ghim hoặc bỏ ghim.
+- Icon: bấm nút thì bảng icon xổ ra để chọn, rồi mới đặt lên chart.
+- Lùi / tiến: ↶ hoàn tác bước vừa rồi, kể cả xóa hình. ↷ làm lại bước đó.
+- Hình vẽ (trend, vùng, Fib, Long/Short): đặt, kéo, chỉnh như TradingView.
+
+Không thêm phần TradingView không phục vụ chart tập trade: mạng xã hội, ý tưởng, tin tức, quảng cáo, danh sách sàn, sổ lệnh thật, màn hình thị trường. Không tự thêm nguồn dữ liệu khi người dùng không yêu cầu.

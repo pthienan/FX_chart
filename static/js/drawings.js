@@ -179,12 +179,17 @@ const Draw = (() => {
   const HIT = 6;
   const MAGNET_PX = 14;
 
-  let sel = null, hover = null, drag = null, pending = null, measure = null, redoStack = [];
+  let sel = null, hover = null, drag = null, pending = null, measure = null, undoStack = [], redoStack = [];
   function syncHist() {
-    $('undo-draw').disabled = S.drawings.length === 0;
+    $('undo-draw').disabled = undoStack.length === 0;
     $('redo-draw').disabled = redoStack.length === 0;
   }
   function dropRedo() { redoStack = []; syncHist(); }
+  function remember(action) {
+    undoStack.push(action);
+    redoStack = [];
+    syncHist();
+  }
   let magnet = false, keepTool = false, isDirty = true, lastSig = '';
 
   // ------------------------------------------------------------ coordinates
@@ -657,11 +662,10 @@ const Draw = (() => {
     return d;
   }
   function commit(d) {
-    redoStack = [];
     S.drawings.push(d);
+    remember({ kind: 'add', drawing: d });
     select(d);
     save();
-    syncHist();
   }
   function select(d) {
     sel = d;
@@ -1087,7 +1091,7 @@ const Draw = (() => {
   // ------------------------------------------------------------ public api
   const api = {
     dirty,
-    reset() { sel = hover = drag = pending = measure = null; redoStack = []; renderProps(); dirty(); syncHist(); },
+    reset() { sel = hover = drag = pending = measure = null; undoStack = []; redoStack = []; renderProps(); dirty(); syncHist(); },
     refreshProps() { renderProps(); },
     setTool(t) {
       S.tool = S.tool === t ? null : t;
@@ -1105,31 +1109,52 @@ const Draw = (() => {
     },
     removeSelected() {
       if (!sel) return false;
-      S.drawings = S.drawings.filter((d) => d !== sel);
-      dropRedo();
+      const index = S.drawings.indexOf(sel);
+      const drawing = sel;
+      S.drawings = S.drawings.filter((d) => d !== drawing);
+      remember({ kind: 'remove', drawing, index });
       select(null);
       save();
       return true;
     },
     undo() {
-      const d = S.drawings.pop();
-      if (!d) return;
-      redoStack.push(d);
-      if (d === sel) select(null);
+      const a = undoStack.pop();
+      if (!a) return;
+      if (a.kind === 'add') {
+        S.drawings = S.drawings.filter((d) => d !== a.drawing);
+        if (sel === a.drawing) select(null);
+      } else if (a.kind === 'remove') {
+        S.drawings.splice(Math.max(0, Math.min(a.index, S.drawings.length)), 0, a.drawing);
+        select(a.drawing);
+      } else if (a.kind === 'clear') {
+        S.drawings = a.drawings;
+      }
+      redoStack.push(a);
       dirty(); save(); syncHist();
     },
     redo() {
-      const d = redoStack.pop();
-      if (!d) return;
-      S.drawings.push(d);
-      select(d);
-      save(); syncHist();
+      const a = redoStack.pop();
+      if (!a) return;
+      if (a.kind === 'add') {
+        S.drawings.push(a.drawing);
+        select(a.drawing);
+      } else if (a.kind === 'remove') {
+        S.drawings = S.drawings.filter((d) => d !== a.drawing);
+        if (sel === a.drawing) select(null);
+      } else if (a.kind === 'clear') {
+        S.drawings = [];
+        select(null);
+      }
+      undoStack.push(a);
+      dirty(); save(); syncHist();
     },
     clear() {
+      if (!S.drawings.length) return;
+      const drawings = S.drawings.slice();
       S.drawings = [];
-      redoStack = [];
+      remember({ kind: 'clear', drawings });
       select(null);
-      save(); syncHist();
+      save();
     },
     toggleMagnet() { magnet = !magnet; return magnet; },
     toggleKeep() { keepTool = !keepTool; return keepTool; },
