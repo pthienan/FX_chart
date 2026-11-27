@@ -24,13 +24,15 @@ const Account = (() => {
     }
     let indicators = null;
     let drawDefaults = {};
+    let tfPins = null;
     try { indicators = JSON.parse(localStorage.getItem('fxlab_indicators') || 'null'); } catch (e) { indicators = null; }
     try { drawDefaults = JSON.parse(localStorage.getItem('fxlab_draw_defaults') || '{}'); } catch (e) { drawDefaults = {}; }
+    try { tfPins = JSON.parse(localStorage.getItem('fxlab_tf_pins') || 'null'); } catch (e) { tfPins = null; }
     return {
       symbol: localStorage.getItem('fxlab_symbol') || '',
       tz: localStorage.getItem('fxlab_tz'),
       sideHidden: localStorage.getItem('fxlab_side_hidden') === '1',
-      indicators, drawDefaults, symbols,
+      indicators, drawDefaults, tfPins: Array.isArray(tfPins) ? tfPins : null, symbols,
     };
   }
 
@@ -46,6 +48,9 @@ const Account = (() => {
     localStorage.setItem('fxlab_side_hidden', profile.sideHidden ? '1' : '');
     if (profile.indicators) localStorage.setItem('fxlab_indicators', JSON.stringify(profile.indicators));
     localStorage.setItem('fxlab_draw_defaults', JSON.stringify(profile.drawDefaults || {}));
+    if (Array.isArray(profile.tfPins)) {
+      localStorage.setItem('fxlab_tf_pins', JSON.stringify(profile.tfPins.filter((tf) => ['M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1'].includes(tf))));
+    }
     for (const [sym, state] of Object.entries(profile.symbols || {})) {
       if (/^[A-Z0-9]{6}$/.test(sym) && state && typeof state === 'object') {
         localStorage.setItem('fxlab_' + sym, JSON.stringify(state));

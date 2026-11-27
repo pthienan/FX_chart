@@ -63,8 +63,11 @@ def _write(path, data):
 def _check_profile(profile):
     if not isinstance(profile, dict):
         raise AuthError("Nhật ký không hợp lệ")
-    allowed = {"symbol", "tz", "sideHidden", "indicators", "drawDefaults", "symbols"}
+    allowed = {"symbol", "tz", "sideHidden", "indicators", "drawDefaults", "symbols", "tfPins"}
     if set(profile) - allowed:
+        raise AuthError("Nhật ký không hợp lệ")
+    pins = profile.get("tfPins")
+    if pins is not None and (not isinstance(pins, list) or any(x not in {"M5", "M15", "M30", "H1", "H4", "D1", "W1"} for x in pins)):
         raise AuthError("Nhật ký không hợp lệ")
     symbols = profile.get("symbols", {})
     if not isinstance(symbols, dict):

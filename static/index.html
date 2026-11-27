@@ -9,8 +9,9 @@
 <header id="toolbar">
   <select id="symbol" title="Cặp tiền"></select>
   <div class="group" id="tfs">
-    <button data-tf="M5">M5</button><button data-tf="M15">M15</button><button data-tf="M30">M30</button>
-    <button data-tf="H1">H1</button><button data-tf="H4">H4</button><button data-tf="D1">D1</button><button data-tf="W1">W1</button>
+    <span id="tf-pins"></span>
+    <button id="btn-tf" title="Chọn khung giờ hiện trên thanh">▾</button>
+    <div id="tf-menu" class="hidden"></div>
   </div>
   <div class="group">
     <button id="btn-indicators" title="Thêm indicator">ƒx Indicators</button>
@@ -49,12 +50,13 @@
     <button data-tool="long" title="Long Position">L</button>
     <button data-tool="short" title="Short Position">S</button>
     <button data-tool="measure" title="Đo giá / thời gian (click 2 điểm)">⇔</button>
-    <button data-tool="icon" title="Icon: click để đặt biểu tượng">★</button>
+    <button data-tool="icon" title="Icon: mở bảng biểu tượng, chọn một cái rồi click lên chart">★</button>
     <hr>
     <button id="btn-magnet" title="Nam châm: bám vào O/H/L/C của nến">🧲</button>
     <button id="btn-keep-tool" title="Giữ công cụ sau khi vẽ (vẽ liên tục)">🔒</button>
     <hr>
-    <button id="undo-draw" title="Xóa hình vẽ cuối (Ctrl+Z)">↶</button>
+    <button id="undo-draw" title="Lùi 1 bước (Ctrl+Z)" disabled>↶</button>
+    <button id="redo-draw" title="Tiến 1 bước (Ctrl+Y)" disabled>↷</button>
     <button id="clear-draw" title="Xóa tất cả hình vẽ">🗑</button>
   </nav>
 
@@ -92,7 +94,7 @@
         <button id="btn-buy" class="buy">BUY</button>
         <button id="btn-sell" class="sell">SELL</button>
       </div>
-      <div class="hint">→ nến tiếp · ← lùi · Space chạy/dừng · Shift+B mua · Shift+S bán · Esc hủy công cụ · Delete xóa hình đang chọn · Ctrl+Z xóa hình vẽ cuối · P ẩn/hiện khung này</div>
+      <div class="hint">→ nến tiếp · ← lùi · Space chạy/dừng · Shift+B mua · Shift+S bán · Esc hủy công cụ · Delete xóa hình đang chọn · Ctrl+Z lùi · Ctrl+Y tiến · P ẩn/hiện khung này</div>
     </div>
 
     <div class="panel">

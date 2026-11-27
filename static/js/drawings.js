@@ -38,8 +38,21 @@ const Draw = (() => {
     { id: 'diamond', name: 'Thoi', glyph: '◆' },
   ];
   const ICON_SIZES = [16, 20, 24, 28, 32, 40, 48, 64];
-  const iconId = (d) => ICONS.some((ic) => ic.id === d.icon) ? d.icon : 'arrowUp';
+  const isVectorIcon = (id) => ICONS.some((ic) => ic.id === id);
+  const iconId = (d) => { const v = opt(d, 'icon'); return v == null || v === '' ? 'arrowUp' : v; };
   const iconSize = (d) => ICON_SIZES.includes(opt(d, 'size')) ? opt(d, 'size') : 28;
+  const EMOJI = [
+    { name: 'Mặt cười', items: '😀 😃 😄 😁 😆 😅 🤣 😂 🙂 😉 😊 😇 🥰 😍 🤩 😘 😗 😚 😙 🥲 😋 😛 😜 🤪 😝 🤑 🤗 🤭 🤫 🤔 🤐 🤨 😐 😑 😶 😏 😒 🙄 😬 🤥 😌 😔 😪 🤤 😴 😷 🤒 🤕 🤢 🤮 🤧 🥵 🥶 🥴 😵 🤯 🤠 🥳 😎 🤓 🧐 😕 😟 🙁 😮 😯 😲 😳 🥺 😦 😧 😨 😰 😥 😢 😭 😱 😖 😣 😞 😓 😩 😫 🥱 😤 😡 😠 🤬 😈 👿 💀 ☠️ 💩 🤡 👹 👺 👻 👽 👾 🤖'.split(' ') },
+    { name: 'Cử chỉ', items: '👍 👎 👌 ✌️ 🤞 🤟 🤘 🤙 👋 🤚 ✋ 👏 🙌 👐 🤲 🤝 🙏 ✍️ 💪 👀 👁️ 🧠 👅 👄 💋'.split(' ') },
+    { name: 'Trái tim', items: '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 💟'.split(' ') },
+    { name: 'Đánh dấu', items: '⭐ 🌟 ✨ ⚡ 🔥 💥 💯 💢 💦 💨 ✅ ❌ ⭕ 🔴 🟠 🟡 🟢 🔵 🟣 ⚫ ⚪ 🔶 🔷 ⚠️ 🚫 ⛔ ♻️ ✔️ ❗ ❓ ‼️ ⁉️ 🔔'.split(' ') },
+    { name: 'Mũi tên', items: '⬆️ ⬇️ ⬅️ ➡️ ↗️ ↘️ ↙️ ↖️ 🔼 🔽 ⏫ ⏬ ↩️ ↪️ 🔄 🔃'.split(' ') },
+    { name: 'Giao dịch', items: '💰 💵 💴 💶 💷 💸 💳 💎 🏆 🎯 📌 📍 🚩 🏁 📈 📉 📊 🕒 ⏰ 🚀 💡 🪙 ⚖️ 🔑 🔒 🧲'.split(' ') },
+    { name: 'Đồ vật', items: '⌚ 📱 💻 ⌨️ 🖥️ 🖨️ 📷 🎥 📺 📻 ☎️ 📧 📝 📌 📎 ✂️ 📁 📅 📦 📫 📮 ✏️ 🖊️ 🖋️ 🖌️ 🖍️ 📖 📚 🎁 🎀 🎉 🎊 🎈'.split(' ') },
+    { name: 'Động vật', items: '🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🙈 🙉 🙊 🐔 🐧 🐦 🐤 🦆 🦅 🦉 🦇 🐺 🐗 🐴 🦄 🐝 🐛 🦋 🐌 🐞 🐜 🐢 🐍 🦎 🐙 🦑 🦐 🐠 🐟 🐬 🐳 🦈 🐊'.split(' ') },
+    { name: 'Thức ăn', items: '🍏 🍎 🍊 🍋 🍌 🍉 🍇 🍓 🍒 🍑 🍍 🥝 🍅 🥑 🍔 🍕 🌭 🥪 🌮 🍣 🍩 🍪 🎂 ☕ 🍺 🍻'.split(' ') },
+    { name: 'Cờ', items: '🏳️ 🏴 🚩 🏁 🇻🇳 🇺🇸 🇬🇧 🇯🇵 🇪🇺 🇨🇳 🇰🇷 🇹🇭 🇸🇬 🇦🇺'.split(' ') },
+  ];
   const POS = {
     width: 1, tpColor: '#26a69a', slColor: '#ef5350', fillOpacity: 22, alwaysStats: false, outcome: true,
   };
@@ -91,12 +104,87 @@ const Draw = (() => {
     long: 'Long Position: click tại giá vào lệnh. Kéo mép trên vùng xanh = TP, mép dưới vùng đỏ = SL, đường giữa = Entry, mép phải = độ rộng, kéo trong box = di chuyển.',
     short: 'Short Position: click tại giá vào lệnh. Kéo mép vùng xanh = TP, mép vùng đỏ = SL, đường giữa = Entry, mép phải = độ rộng, kéo trong box = di chuyển.',
     measure: 'Đo: click điểm thứ nhất.',
-    icon: 'Icon: click lên chart để đặt biểu tượng. Double-click để đổi loại, màu và cỡ.',
+    icon: 'Icon: chọn một biểu tượng trong bảng, rồi click lên chart để đặt.',
   };
+  let recentIcons = [];
+  try { recentIcons = JSON.parse(localStorage.getItem('fxlab_icon_recent') || '[]'); } catch (e) { recentIcons = []; }
+  if (!Array.isArray(recentIcons)) recentIcons = [];
+  let placeIcon = (userDefs.icon && userDefs.icon.icon) || '⭐';
+  let iconTab = 'emoji';
+  let iconPopMode = 'place';
+  const iconPop = document.createElement('div');
+  iconPop.id = 'icon-pop';
+  iconPop.className = 'hidden';
+  iconPop.innerHTML = '<div class="icon-pop-tabs"><button type="button" data-icontab="emoji">Emojis</button><button type="button" data-icontab="icon">Icons</button></div><div class="icon-pop-scroll"></div>';
+  document.body.appendChild(iconPop);
+  function iconButtons(ids, active) {
+    return `<div class="icon-grid">${ids.map((id) => {
+      const vec = ICONS.find((ic) => ic.id === id);
+      return `<button type="button" data-pick="${esc(id)}" class="${id === active ? 'on' : ''}" title="${esc(vec ? vec.name : id)}">${vec ? vec.glyph : id}</button>`;
+    }).join('')}</div>`;
+  }
+  function iconCatalog(active) {
+    const parts = [];
+    if (recentIcons.length) parts.push(`<div class="icon-pop-label">Dùng gần đây</div>${iconButtons(recentIcons, active)}`);
+    for (const g of EMOJI) parts.push(`<div class="icon-pop-label">${g.name}</div>${iconButtons(g.items, active)}`);
+    return parts.join('');
+  }
+  function rememberIcon(id) {
+    recentIcons = [id, ...recentIcons.filter((x) => x !== id)].slice(0, 16);
+    localStorage.setItem('fxlab_icon_recent', JSON.stringify(recentIcons));
+  }
+  function renderIconPop() {
+    iconPop.querySelectorAll('[data-icontab]').forEach((b) => b.classList.toggle('active', b.dataset.icontab === iconTab));
+    const body = iconPop.querySelector('.icon-pop-scroll');
+    body.innerHTML = iconTab === 'icon'
+      ? `<div class="icon-pop-label">Một màu — đổi màu sau khi đặt</div>${iconButtons(ICONS.map((ic) => ic.id), placeIcon)}`
+      : iconCatalog(placeIcon);
+    const on = body.querySelector('.on');
+    if (on) {
+      const er = on.getBoundingClientRect(), sr = body.getBoundingClientRect();
+      if (er.top < sr.top || er.bottom > sr.bottom) body.scrollTop += er.top - sr.top - 36;
+    }
+  }
+  function openIconPop(mode) {
+    iconPopMode = mode || 'place';
+    iconTab = isVectorIcon(placeIcon) ? 'icon' : 'emoji';
+    const btn = document.querySelector('[data-tool="icon"]');
+    const r = btn.getBoundingClientRect();
+    const h = Math.min(520, window.innerHeight - 16);
+    iconPop.style.height = h + 'px';
+    iconPop.style.left = (r.right + 6) + 'px';
+    iconPop.style.top = Math.max(8, Math.min(r.top - 60, window.innerHeight - h - 8)) + 'px';
+    iconPop.classList.remove('hidden');
+    renderIconPop();
+  }
+  function closeIconPop() { iconPop.classList.add('hidden'); }
+  iconPop.addEventListener('mousedown', (e) => e.stopPropagation());
+  iconPop.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-icontab]');
+    if (tab) { iconTab = tab.dataset.icontab; renderIconPop(); return; }
+    const b = e.target.closest('[data-pick]');
+    if (!b) return;
+    placeIcon = b.dataset.pick;
+    rememberIcon(placeIcon);
+    setUserDef(['icon'], { icon: placeIcon });
+    if (iconPopMode === 'edit' && sel && sel.type === 'icon') {
+      sel.icon = placeIcon;
+      closeIconPop();
+      renderProps(); dirty(); save();
+      return;
+    }
+    closeIconPop();
+    setStatus('Click lên chart để đặt biểu tượng.');
+  });
   const HIT = 6;
   const MAGNET_PX = 14;
 
-  let sel = null, hover = null, drag = null, pending = null, measure = null;
+  let sel = null, hover = null, drag = null, pending = null, measure = null, redoStack = [];
+  function syncHist() {
+    $('undo-draw').disabled = S.drawings.length === 0;
+    $('redo-draw').disabled = redoStack.length === 0;
+  }
+  function dropRedo() { redoStack = []; syncHist(); }
   let magnet = false, keepTool = false, isDirty = true, lastSig = '';
 
   // ------------------------------------------------------------ coordinates
@@ -182,6 +270,14 @@ const Draw = (() => {
   function drawGlyph(id, x, y, size, color) {
     ctx.save();
     ctx.translate(x, y);
+    if (!isVectorIcon(id)) {
+      ctx.font = `${size}px "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(id, 0, size * 0.06);
+      ctx.restore();
+      return;
+    }
     ctx.scale(size / 2, size / 2);
     ctx.fillStyle = color;
     ctx.strokeStyle = color;
@@ -561,9 +657,11 @@ const Draw = (() => {
     return d;
   }
   function commit(d) {
+    redoStack = [];
     S.drawings.push(d);
     select(d);
     save();
+    syncHist();
   }
   function select(d) {
     sel = d;
@@ -578,10 +676,11 @@ const Draw = (() => {
     const box = $('draw-props');
     if (!sel) { box.classList.add('hidden'); box.innerHTML = ''; return; }
     const d = sel, parts = [];
-    if (d.type !== 'long' && d.type !== 'short') {
+    if (d.type !== 'long' && d.type !== 'short' && !(d.type === 'icon' && !isVectorIcon(iconId(d)))) {
       parts.push(`<input type="color" class="sw" data-a="color" value="${colorOf(d)}" title="Màu">`);
     }
     if (d.type === 'icon') {
+      parts.push('<button data-a="pick" title="Đổi biểu tượng">Đổi</button>');
       const sz = iconSize(d);
       parts.push(`<select data-a="size" title="Cỡ">${ICON_SIZES.map((n) => `<option value="${n}"${n === sz ? ' selected' : ''}>${n}</option>`).join('')}</select>`);
     } else {
@@ -621,6 +720,7 @@ const Draw = (() => {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (!a || !sel) return;
     if (a === 'extend') { sel.extend = !opt(sel, 'extend'); renderProps(); save(); }
+    else if (a === 'pick') openIconPop('edit');
     else if (a === 'settings') openSettings(sel);
     else if (a === 'delete') api.removeSelected();
     else if (a === 'flip') {
@@ -681,9 +781,8 @@ const Draw = (() => {
     }
   }
   function iconPicker(cur) {
-    const id = ICONS.some((ic) => ic.id === cur) ? cur : 'arrowUp';
-    const btns = ICONS.map((ic) => `<button type="button" data-icon="${ic.id}" class="${ic.id === id ? 'active' : ''}" title="${ic.name}">${ic.glyph}</button>`).join('');
-    return `<div class="icon-pick">${btns}<input type="hidden" data-k="icon" value="${id}"></div>`;
+    const id = cur || placeIcon || 'arrowUp';
+    return `<div class="icon-catalog"><div class="icon-pop-label">Icons</div>${iconButtons(ICONS.map((ic) => ic.id), id)}${iconCatalog(id)}<input type="hidden" data-k="icon" value="${esc(id)}"></div>`;
   }
   function coordRows(d, kind) {
     const step = S.pip / 10;
@@ -737,11 +836,11 @@ const Draw = (() => {
         </div>`);
       const body = $('modal-body');
       $('ds-cancel').onclick = closeModal;
-      body.querySelectorAll('[data-icon]').forEach((btn) => {
+      body.querySelectorAll('[data-pick]').forEach((btn) => {
         btn.onclick = () => {
           const hid = body.querySelector('[data-k="icon"]');
-          if (hid) hid.value = btn.dataset.icon;
-          body.querySelectorAll('[data-icon]').forEach((b) => b.classList.toggle('active', b === btn));
+          if (hid) hid.value = btn.dataset.pick;
+          body.querySelectorAll('[data-pick]').forEach((b) => b.classList.toggle('on', b === btn));
         };
       });
       $('ds-factory').onclick = () => render({ ...TYPE_DEF[d.type], text: readStyle(body).text });
@@ -893,8 +992,13 @@ const Draw = (() => {
         return;
       }
       if (done.type === 'measure') { measure = done; dirty(); } else commit(done);
-    } else if (tool === 'hline' || tool === 'vline' || tool === 'icon') {
+    } else if (tool === 'hline' || tool === 'vline') {
       commit(newDrawing(tool, [P]));
+    } else if (tool === 'icon') {
+      const d = newDrawing(tool, [P]);
+      d.icon = placeIcon;
+      rememberIcon(placeIcon);
+      commit(d);
     } else if (tool === 'long' || tool === 'short') {
       // Sized to the current view (as TradingView does), keeping the TP:SL ratio from the order settings.
       const dir = tool === 'long' ? 1 : -1;
@@ -975,7 +1079,7 @@ const Draw = (() => {
 
   window.addEventListener('mouseup', () => {
     if (!drag) return;
-    if (drag.moved) save();
+    if (drag.moved) { dropRedo(); save(); }
     drag = null;
     dirty();
   });
@@ -983,12 +1087,14 @@ const Draw = (() => {
   // ------------------------------------------------------------ public api
   const api = {
     dirty,
-    reset() { sel = hover = drag = pending = measure = null; renderProps(); dirty(); },
+    reset() { sel = hover = drag = pending = measure = null; redoStack = []; renderProps(); dirty(); syncHist(); },
     refreshProps() { renderProps(); },
     setTool(t) {
       S.tool = S.tool === t ? null : t;
       pending = null;
       document.querySelectorAll('[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === S.tool));
+      if (S.tool === 'icon') openIconPop('place');
+      else closeIconPop();
       if (S.tool) setStatus(TOOL_HELP[S.tool] || '');
       dirty();
     },
@@ -1000,19 +1106,30 @@ const Draw = (() => {
     removeSelected() {
       if (!sel) return false;
       S.drawings = S.drawings.filter((d) => d !== sel);
+      dropRedo();
       select(null);
       save();
       return true;
     },
     undo() {
       const d = S.drawings.pop();
-      if (d && d === sel) select(null);
-      dirty(); save();
+      if (!d) return;
+      redoStack.push(d);
+      if (d === sel) select(null);
+      dirty(); save(); syncHist();
+    },
+    redo() {
+      const d = redoStack.pop();
+      if (!d) return;
+      S.drawings.push(d);
+      select(d);
+      save(); syncHist();
     },
     clear() {
       S.drawings = [];
+      redoStack = [];
       select(null);
-      save();
+      save(); syncHist();
     },
     toggleMagnet() { magnet = !magnet; return magnet; },
     toggleKeep() { keepTool = !keepTool; return keepTool; },

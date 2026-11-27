@@ -174,7 +174,7 @@ async function loadData(tf, cursor) {
   applyDigits();
   Ind.computeAll();
   S.end = replayAt ? Math.max(1, countClosed(cursor)) : S.bars.length;
-  document.querySelectorAll('#tfs button').forEach((b) => b.classList.toggle('active', b.dataset.tf === tf));
+  if (window.renderTfs) renderTfs();
   render(true);
   setStatus(`${S.symbol} ${tf}: ${S.bars.length} nến, ${fmt(S.t[0])} → ${fmt(S.t[S.t.length - 1])} · nguồn: ${S.source}`);
   return true;

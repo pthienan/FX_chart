@@ -1,12 +1,51 @@
 'use strict';
 // UI wiring, keyboard shortcuts, plugin loading and startup.
 
-document.querySelectorAll('#tfs button').forEach((b) => b.addEventListener('click', () => changeTF(b.dataset.tf)));
+const ALL_TF = ['M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1'];
+const DEFAULT_TF_PINS = ['M15', 'H1', 'H4', 'D1'];
+function tfPins() {
+  try {
+    const list = JSON.parse(localStorage.getItem('fxlab_tf_pins') || 'null');
+    if (Array.isArray(list)) return ALL_TF.filter((tf) => list.includes(tf));
+  } catch (e) { /* dùng mặc định */ }
+  return DEFAULT_TF_PINS.slice();
+}
+function renderTfs() {
+  const pins = tfPins();
+  const shown = pins.slice();
+  if (S.tf && ALL_TF.includes(S.tf) && !shown.includes(S.tf)) shown.push(S.tf);
+  $('tf-pins').innerHTML = shown.map((tf) => `<button data-tf="${tf}" class="${tf === S.tf ? 'active' : ''}">${tf}</button>`).join('');
+  $('tf-menu').innerHTML = ALL_TF.map((tf) => {
+    const on = pins.includes(tf);
+    return `<button type="button" data-tf="${tf}" class="${tf === S.tf ? 'active' : ''}">${tf}</button>` +
+      `<button type="button" class="tf-star${on ? ' on' : ''}" data-pin="${tf}" title="${on ? 'Bỏ khỏi thanh' : 'Hiện trên thanh'}">${on ? '★' : '☆'}</button>`;
+  }).join('');
+}
+window.renderTfs = renderTfs;
+$('tfs').addEventListener('click', (e) => {
+  const pin = e.target.closest('[data-pin]');
+  if (pin) {
+    const cur = tfPins();
+    const tf = pin.dataset.pin;
+    const next = cur.includes(tf) ? cur.filter((x) => x !== tf) : ALL_TF.filter((x) => cur.includes(x) || x === tf);
+    localStorage.setItem('fxlab_tf_pins', JSON.stringify(next));
+    if (window.Account) Account.touch();
+    renderTfs();
+    return;
+  }
+  if (e.target.closest('#btn-tf')) { $('tf-menu').classList.toggle('hidden'); return; }
+  const btn = e.target.closest('#tfs [data-tf]');
+  if (!btn) return;
+  $('tf-menu').classList.add('hidden');
+  changeTF(btn.dataset.tf);
+});
+document.addEventListener('mousedown', (e) => { if (!e.target.closest('#tfs')) $('tf-menu').classList.add('hidden'); });
 document.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => Draw.setTool(b.dataset.tool)));
 $('btn-indicators').addEventListener('click', () => Ind.openPicker());
 $('btn-magnet').addEventListener('click', (e) => e.currentTarget.classList.toggle('active', Draw.toggleMagnet()));
 $('btn-keep-tool').addEventListener('click', (e) => e.currentTarget.classList.toggle('active', Draw.toggleKeep()));
 $('undo-draw').addEventListener('click', () => Draw.undo());
+$('redo-draw').addEventListener('click', () => Draw.redo());
 $('clear-draw').addEventListener('click', () => { if (S.drawings.length && confirm('Xóa tất cả hình vẽ?')) Draw.clear(); });
 $('btn-goto').addEventListener('click', gotoDate);
 $('btn-back').addEventListener('click', stepBack);
@@ -69,7 +108,8 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'Delete' || e.key === 'Backspace') { if (Draw.removeSelected()) e.preventDefault(); }
   else if (e.shiftKey && e.key.toUpperCase() === 'B') placeOrder('buy');
   else if (e.shiftKey && e.key.toUpperCase() === 'S') placeOrder('sell');
-  else if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); Draw.undo(); }
+  else if (e.ctrlKey && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); Draw.undo(); }
+  else if (e.ctrlKey && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); Draw.redo(); }
   else if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') setSideHidden(!document.body.classList.contains('side-hidden'));
 });
 window.addEventListener('beforeunload', () => { save(); if (window.Account) Account.flush(); });

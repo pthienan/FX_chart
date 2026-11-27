@@ -25,6 +25,18 @@ input[type="color"] { padding: 0 2px; height: 24px; width: 40px; }
 #toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px;
   border-bottom: 1px solid #2a2e39; background: #171b26; }
 #toolbar .group { display: flex; gap: 3px; align-items: center; padding-left: 6px; border-left: 1px solid #2a2e39; }
+#tfs { position: relative; }
+#tf-pins { display: flex; gap: 3px; }
+#btn-tf { width: 22px; padding: 4px 0; }
+#tf-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; min-width: 148px; padding: 6px;
+  background: #1e222d; border: 1px solid #2a2e39; border-radius: 8px; box-shadow: 0 8px 24px #000a;
+  display: grid; grid-template-columns: 1fr 28px; gap: 2px; }
+#tf-menu.hidden { display: none !important; }
+#tf-menu button { text-align: left; background: transparent; border-color: transparent; }
+#tf-menu button:hover { background: #2a2e39; }
+#tf-menu button.active { background: #2962ff; border-color: #2962ff; }
+#tf-menu .tf-star { text-align: center; padding: 4px 0; color: #787b86; }
+#tf-menu .tf-star.on { color: #f0b90b; }
 #toolbar .group.right { margin-left: auto; }
 #goto { width: 165px; }
 #btn-account { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
@@ -126,8 +138,21 @@ td.sell { color: #ef5350; font-weight: 600; }
 .ind-form .ind-group { grid-column: 1 / -1; margin-top: 6px; padding-top: 6px; border-top: 1px solid #2a2e39;
   color: #d1d4dc; font-weight: 600; }
 .ind-form input[type="text"] { width: 100%; }
-.icon-pick { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
-.icon-pick button { width: 36px; height: 36px; padding: 0; font-size: 18px; line-height: 1; }
+#icon-pop { position: fixed; z-index: 30; width: 340px; display: flex; flex-direction: column;
+  background: #1e222d; border: 1px solid #2a2e39; border-radius: 8px; box-shadow: 0 8px 28px #000a; }
+#icon-pop.hidden { display: none !important; }
+.icon-pop-tabs { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid #2a2e39; }
+.icon-pop-tabs button { flex: 1; }
+.icon-pop-scroll, .icon-catalog { overflow: auto; padding: 4px 8px 10px; }
+.icon-catalog { grid-column: 1 / -1; max-height: 320px; }
+.icon-pop-label { color: #787b86; font-size: 11px; margin: 8px 2px 4px; }
+.icon-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+#icon-pop .icon-grid button, .icon-catalog .icon-grid button {
+  height: 34px; padding: 0; font-size: 20px; line-height: 1; background: transparent; border-color: transparent;
+  font-family: "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+}
+#icon-pop .icon-grid button:hover, .icon-catalog .icon-grid button:hover,
+#icon-pop .icon-grid button.on, .icon-catalog .icon-grid button.on { background: #2a2e39; border-color: #2962ff; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; }
 
 .fib-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding-bottom: 10px; border-bottom: 1px solid #2a2e39; }

@@ -53,8 +53,10 @@ async function hashPassword(password, salt) {
 
 function checkProfile(profile) {
   if (!profile || typeof profile !== "object" || Array.isArray(profile)) return "Nhật ký không hợp lệ";
-  const allowed = new Set(["symbol", "tz", "sideHidden", "indicators", "drawDefaults", "symbols"]);
+  const allowed = new Set(["symbol", "tz", "sideHidden", "indicators", "drawDefaults", "symbols", "tfPins"]);
   for (const key of Object.keys(profile)) if (!allowed.has(key)) return "Nhật ký không hợp lệ";
+  const tfOk = new Set(["M5", "M15", "M30", "H1", "H4", "D1", "W1"]);
+  if (profile.tfPins != null && (!Array.isArray(profile.tfPins) || profile.tfPins.some((tf) => !tfOk.has(tf)))) return "Nhật ký không hợp lệ";
   const symbols = profile.symbols || {};
   if (typeof symbols !== "object" || Array.isArray(symbols)) return "Nhật ký không hợp lệ";
   for (const [key, value] of Object.entries(symbols)) {
