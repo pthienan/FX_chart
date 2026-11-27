@@ -17,6 +17,7 @@ const S = {
   trades: [], nextId: 1,
   settings: { ...DEFAULT_SETTINGS },
   posSig: '', statSig: '',
+  journalLoaded: false,
 };
 
 // ---------------------------------------------------------------- charts
@@ -196,6 +197,7 @@ function migrateDrawings(list) {
 
 async function openSymbol(sym) {
   stopPlay();
+  S.journalLoaded = false;
   S.symbol = sym;
   localStorage.setItem('fxlab_symbol', sym);
   const st = JSON.parse(localStorage.getItem('fxlab_' + sym) || '{}');
@@ -207,6 +209,7 @@ async function openSymbol(sym) {
   for (const d of S.drawings) { if (!d.id) d.id = S.drawSeq; S.drawSeq = Math.max(S.drawSeq, d.id + 1); }
   S.replay = !!st.replay && st.cursor != null;
   S.posSig = ''; S.statSig = '';
+  S.journalLoaded = true;
   Draw.reset();
   writeSettingsUI();
   if (!(await loadData(st.tf || 'H1', S.replay ? st.cursor : null)) && S.replay) {
@@ -249,6 +252,7 @@ async function updateData() {
 // ---------------------------------------------------------------- persistence
 let saveTimer = null;
 function save() {
+  if (!S.journalLoaded) return;
   clearTimeout(saveTimer); saveTimer = null;
   localStorage.setItem('fxlab_' + S.symbol, JSON.stringify({
     trades: S.trades, nextId: S.nextId, settings: S.settings, drawings: S.drawings,

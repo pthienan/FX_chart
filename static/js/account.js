@@ -28,12 +28,24 @@ const Account = (() => {
     try { indicators = JSON.parse(localStorage.getItem('fxlab_indicators') || 'null'); } catch (e) { indicators = null; }
     try { drawDefaults = JSON.parse(localStorage.getItem('fxlab_draw_defaults') || '{}'); } catch (e) { drawDefaults = {}; }
     try { tfPins = JSON.parse(localStorage.getItem('fxlab_tf_pins') || 'null'); } catch (e) { tfPins = null; }
-    return {
+    const profile = {
       symbol: localStorage.getItem('fxlab_symbol') || '',
       tz: localStorage.getItem('fxlab_tz'),
       sideHidden: localStorage.getItem('fxlab_side_hidden') === '1',
-      indicators, drawDefaults, tfPins: Array.isArray(tfPins) ? tfPins : null, symbols,
+      indicators, drawDefaults, symbols,
     };
+    if (Array.isArray(tfPins)) profile.tfPins = tfPins;
+    return profile;
+  }
+
+  function journalWeight(profile) {
+    let n = 0;
+    for (const state of Object.values((profile && profile.symbols) || {})) {
+      if (!state || typeof state !== 'object') continue;
+      n += Array.isArray(state.drawings) ? state.drawings.length : 0;
+      n += Array.isArray(state.trades) ? state.trades.length : 0;
+    }
+    return n;
   }
 
   function applyProfile(profile) {
@@ -91,10 +103,10 @@ const Account = (() => {
     timer = setTimeout(flush, 800);
   }
 
-  async function flush() {
+  async function flush(force) {
     clearTimeout(timer);
     timer = null;
-    if (!email) return;
+    if (!email || (!force && !S.journalLoaded)) return;
     try { await call('profile', 'PUT', { profile: snapshot() }); }
     catch (e) { setStatus(`Không lưu được tài khoản: ${e.message}`, true); }
   }
@@ -105,10 +117,15 @@ const Account = (() => {
       const me = await call('me', 'GET');
       email = me.email;
       paint();
-      if (me.profile && canon(me.profile) !== canon(snapshot())) {
-        applyProfile(me.profile);
-        location.reload();
-        return new Promise(() => {});
+      const local = snapshot();
+      if (me.profile && canon(me.profile) !== canon(local)) {
+        if (journalWeight(local) > journalWeight(me.profile)) {
+          await flush(true);
+        } else {
+          applyProfile(me.profile);
+          location.reload();
+          return new Promise(() => {});
+        }
       }
     } catch (e) {
       email = '';
