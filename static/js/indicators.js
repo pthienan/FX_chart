@@ -254,7 +254,10 @@ const Ind = (() => {
     $('legend-ind').innerHTML = main.join('');
   }
 
-  function save() { localStorage.setItem(STORE, JSON.stringify(insts)); }
+  function save() {
+    localStorage.setItem(STORE, JSON.stringify(insts));
+    if (window.Account) Account.touch();
+  }
 
   function changed() {
     if (!S.bars.length) return;

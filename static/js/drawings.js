@@ -59,6 +59,7 @@ const Draw = (() => {
   function setUserDef(types, vals) {
     for (const t of types) userDefs[t] = { ...(userDefs[t] || {}), ...JSON.parse(JSON.stringify(vals)) };
     localStorage.setItem(DEF_STORE, JSON.stringify(userDefs));
+    if (window.Account) Account.touch();
   }
 
   const TOOL_HELP = {

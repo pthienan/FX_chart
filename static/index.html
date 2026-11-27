@@ -33,7 +33,9 @@
       <option value="0">UTC</option><option value="1">UTC+1</option><option value="2">UTC+2</option>
       <option value="3">UTC+3</option><option value="7">UTC+7</option><option value="-5">UTC-5</option><option value="-4">UTC-4</option>
     </select>
-    <button id="btn-update" title="Tải dữ liệu mới nhất từ Yahoo">⟳ Cập nhật dữ liệu</button>
+    <button id="btn-update" title="Tải dữ liệu mới nhất (OANDA nếu có token trong file .env, nếu không thì Yahoo)">⟳ Cập nhật dữ liệu</button>
+    <button id="btn-side" title="Ẩn / hiện khung Đặt lệnh bên phải (phím P)">◨ Panel</button>
+    <button id="btn-account" title="Đăng nhập bằng email để giữ nhật ký, thông số và indicator khi đổi máy">Tài khoản</button>
   </div>
 </header>
 
@@ -89,7 +91,7 @@
         <button id="btn-buy" class="buy">BUY</button>
         <button id="btn-sell" class="sell">SELL</button>
       </div>
-      <div class="hint">→ nến tiếp · ← lùi · Space chạy/dừng · Shift+B mua · Shift+S bán · Esc hủy công cụ · Delete xóa hình đang chọn · Ctrl+Z xóa hình vẽ cuối</div>
+      <div class="hint">→ nến tiếp · ← lùi · Space chạy/dừng · Shift+B mua · Shift+S bán · Esc hủy công cụ · Delete xóa hình đang chọn · Ctrl+Z xóa hình vẽ cuối · P ẩn/hiện khung này</div>
     </div>
 
     <div class="panel">
@@ -122,6 +124,7 @@
 <script src="/static/js/indicators.js"></script>
 <script src="/static/js/drawings.js"></script>
 <script src="/static/js/trading.js"></script>
+<script src="/static/js/account.js"></script>
 <script src="/static/js/main.js"></script>
 </body>
 </html>

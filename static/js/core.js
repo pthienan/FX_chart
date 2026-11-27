@@ -132,7 +132,7 @@ function showLegend(i) {
   const d = S.digits, chg = (b.close - b.open) / S.pip;
   const cls = chg >= 0 ? 'pos' : 'neg';
   $('legend-main').innerHTML =
-    `<b>${S.symbol} · ${S.tf}</b><span class="muted">${fmt(S.t[i])}</span>` +
+    `<b>${S.symbol} · ${S.tf}</b><span class="muted">${esc(S.source || '')}</span><span class="muted">${fmt(S.t[i])}</span>` +
     `<span>O <i class="${cls}">${b.open.toFixed(d)}</i></span><span>H <i class="${cls}">${b.high.toFixed(d)}</i></span>` +
     `<span>L <i class="${cls}">${b.low.toFixed(d)}</i></span><span>C <i class="${cls}">${b.close.toFixed(d)}</i></span>` +
     `<span class="${cls}">${sign(chg)}p</span>`;
@@ -167,6 +167,7 @@ async function loadData(tf, cursor) {
     return false;
   }
   S.tf = tf; S.pip = j.pip; S.digits = j.digits; S.quoteUsd = j.quote_usd; S.contract = j.contract || 100000;
+  S.source = j.source || 'Yahoo Finance';
   const off = S.tz * 3600;
   S.t = j.data.map((d) => d[0]);
   S.bars = j.data.map((d) => ({ time: d[0] + off, open: d[1], high: d[2], low: d[3], close: d[4] }));
@@ -175,7 +176,7 @@ async function loadData(tf, cursor) {
   S.end = replayAt ? Math.max(1, countClosed(cursor)) : S.bars.length;
   document.querySelectorAll('#tfs button').forEach((b) => b.classList.toggle('active', b.dataset.tf === tf));
   render(true);
-  setStatus(`${S.symbol} ${tf}: ${S.bars.length} nến, ${fmt(S.t[0])} → ${fmt(S.t[S.t.length - 1])}`);
+  setStatus(`${S.symbol} ${tf}: ${S.bars.length} nến, ${fmt(S.t[0])} → ${fmt(S.t[S.t.length - 1])} · nguồn: ${S.source}`);
   return true;
 }
 
@@ -231,7 +232,7 @@ async function updateData() {
     }
     return;
   }
-  setStatus('Đang tải dữ liệu mới từ Yahoo (M5, M15, M30, H1, D1)...');
+  setStatus(`Đang tải dữ liệu mới từ ${S.source || 'nguồn dữ liệu'}...`);
   try {
     const r = await fetch(`/api/update?symbol=${S.symbol}`, { method: 'POST' });
     const j = await r.json();
@@ -253,6 +254,7 @@ function save() {
     trades: S.trades, nextId: S.nextId, settings: S.settings, drawings: S.drawings,
     replay: S.replay, cursor: S.replay ? cursorUtc() : null, tf: S.tf,
   }));
+  if (window.Account) Account.touch();
 }
 function saveSoon() {
   if (!saveTimer) saveTimer = setTimeout(save, 800);

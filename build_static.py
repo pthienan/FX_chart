@@ -35,13 +35,13 @@ def main():
     for sym in server.SYMBOLS:
         if not args.no_update:
             try:
-                print(sym, server.update(sym))
+                print(sym, server.update(sym, src="yahoo"))
             except Exception as e:  # noqa: BLE001
                 print(f"[warn] update {sym}: {e}")
         written = 0
         for tf in [*server.SOURCES, *server.DERIVED]:
             try:
-                payload = server.candles_payload(sym, tf)
+                payload = server.candles_payload(sym, tf, "yahoo")
             except Exception as e:  # noqa: BLE001
                 print(f"[warn] {sym} {tf}: {e}")
                 continue

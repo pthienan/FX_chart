@@ -15,6 +15,15 @@ $('btn-play').addEventListener('click', togglePlay);
 $('btn-exit-replay').addEventListener('click', exitReplay);
 $('speed').addEventListener('change', () => { if (S.timer) { stopPlay(); togglePlay(); } });
 $('btn-update').addEventListener('click', updateData);
+function setSideHidden(hidden) {
+  document.body.classList.toggle('side-hidden', hidden);
+  $('btn-side').classList.toggle('active', !hidden);
+  localStorage.setItem('fxlab_side_hidden', hidden ? '1' : '');
+  if (window.Account) Account.touch();
+  Draw.dirty();
+}
+setSideHidden(localStorage.getItem('fxlab_side_hidden') === '1');
+$('btn-side').addEventListener('click', () => setSideHidden(!document.body.classList.contains('side-hidden')));
 $('btn-buy').addEventListener('click', () => placeOrder('buy'));
 $('btn-sell').addEventListener('click', () => placeOrder('sell'));
 $('btn-export').addEventListener('click', exportCsv);
@@ -24,6 +33,7 @@ $('tz').addEventListener('change', async (e) => {
   const cursor = S.replay ? cursorUtc() : null;
   S.tz = +e.target.value;
   localStorage.setItem('fxlab_tz', S.tz);
+  if (window.Account) Account.touch();
   await loadData(S.tf, cursor);
 });
 for (const id of [...Object.values(SETTING_INPUTS), 's-otype']) {
@@ -60,8 +70,9 @@ document.addEventListener('keydown', (e) => {
   else if (e.shiftKey && e.key.toUpperCase() === 'B') placeOrder('buy');
   else if (e.shiftKey && e.key.toUpperCase() === 'S') placeOrder('sell');
   else if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); Draw.undo(); }
+  else if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') setSideHidden(!document.body.classList.contains('side-hidden'));
 });
-window.addEventListener('beforeunload', save);
+window.addEventListener('beforeunload', () => { save(); if (window.Account) Account.flush(); });
 
 function loadScript(src) {
   return new Promise((resolve) => {
@@ -89,6 +100,7 @@ async function loadIndicatorPlugins() {
 }
 
 (async function init() {
+  await Account.prepare();
   S.tz = +(localStorage.getItem('fxlab_tz') ?? 7);
   $('tz').value = String(S.tz);
   await loadIndicatorPlugins();

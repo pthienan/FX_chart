@@ -36,6 +36,14 @@ jobs:
 
       - run: python build_static.py --out site
 
+      - name: Bind account storage
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PAGES_PROJECT: ${{ env.PAGES_PROJECT }}
+        run: python bind_account_kv.py
+
       - name: Create Pages project (first run only)
         continue-on-error: true
         uses: cloudflare/wrangler-action@v3
