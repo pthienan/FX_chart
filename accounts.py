@@ -63,12 +63,24 @@ def _write(path, data):
 def _check_profile(profile):
     if not isinstance(profile, dict):
         raise AuthError("Nhật ký không hợp lệ")
-    allowed = {"symbol", "tz", "sideHidden", "indicators", "drawDefaults", "symbols", "tfPins"}
+    allowed = {"symbol", "tz", "sideHidden", "indicators", "drawDefaults", "symbols", "tfPins", "userScripts"}
     if set(profile) - allowed:
         raise AuthError("Nhật ký không hợp lệ")
     pins = profile.get("tfPins")
     if pins is not None and (not isinstance(pins, list) or any(x not in {"M5", "M15", "M30", "H1", "H4", "D1", "W1"} for x in pins)):
         raise AuthError("Nhật ký không hợp lệ")
+    scripts = profile.get("userScripts")
+    if scripts is not None:
+        if not isinstance(scripts, list) or len(scripts) > 40:
+            raise AuthError("Nhật ký không hợp lệ")
+        for item in scripts:
+            if not isinstance(item, dict) or set(item) - {"id", "name", "code"}:
+                raise AuthError("Nhật ký không hợp lệ")
+            if not isinstance(item.get("id"), str) or not re.fullmatch(r"[A-Za-z0-9]{1,16}", item["id"]):
+                raise AuthError("Nhật ký không hợp lệ")
+            name, code = item.get("name"), item.get("code")
+            if not isinstance(name, str) or len(name) > 80 or not isinstance(code, str) or len(code) > 60_000:
+                raise AuthError("Nhật ký không hợp lệ")
     symbols = profile.get("symbols", {})
     if not isinstance(symbols, dict):
         raise AuthError("Nhật ký không hợp lệ")

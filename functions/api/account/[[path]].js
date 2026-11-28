@@ -53,10 +53,19 @@ async function hashPassword(password, salt) {
 
 function checkProfile(profile) {
   if (!profile || typeof profile !== "object" || Array.isArray(profile)) return "Nhật ký không hợp lệ";
-  const allowed = new Set(["symbol", "tz", "sideHidden", "indicators", "drawDefaults", "symbols", "tfPins"]);
+  const allowed = new Set(["symbol", "tz", "sideHidden", "indicators", "drawDefaults", "symbols", "tfPins", "userScripts"]);
   for (const key of Object.keys(profile)) if (!allowed.has(key)) return "Nhật ký không hợp lệ";
   const tfOk = new Set(["M5", "M15", "M30", "H1", "H4", "D1", "W1"]);
   if (profile.tfPins != null && (!Array.isArray(profile.tfPins) || profile.tfPins.some((tf) => !tfOk.has(tf)))) return "Nhật ký không hợp lệ";
+  if (profile.userScripts != null) {
+    if (!Array.isArray(profile.userScripts) || profile.userScripts.length > 40) return "Nhật ký không hợp lệ";
+    for (const item of profile.userScripts) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return "Nhật ký không hợp lệ";
+      if (Object.keys(item).some((key) => !["id", "name", "code"].includes(key))) return "Nhật ký không hợp lệ";
+      if (typeof item.id !== "string" || !/^[A-Za-z0-9]{1,16}$/.test(item.id)) return "Nhật ký không hợp lệ";
+      if (typeof item.name !== "string" || item.name.length > 80 || typeof item.code !== "string" || item.code.length > 60000) return "Nhật ký không hợp lệ";
+    }
+  }
   const symbols = profile.symbols || {};
   if (typeof symbols !== "object" || Array.isArray(symbols)) return "Nhật ký không hợp lệ";
   for (const [key, value] of Object.entries(symbols)) {

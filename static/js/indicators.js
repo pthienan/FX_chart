@@ -104,13 +104,87 @@ const FX = {
   },
 };
 
+const USER_SCRIPT_STORE = 'fxlab_user_scripts';
+const USER_SCRIPT_SAMPLE = `// Dán Pine Script của TradingView, hoặc viết FX.indicator như mẫu dưới.
+// bars[i] = { time, open, high, low, close }. null = chưa đủ dữ liệu.
+FX.indicator({
+  id: 'my_sma',
+  name: 'SMA của tôi',
+  description: 'Đường trung bình do tôi viết',
+  pane: 'main',
+  params: [
+    { id: 'length', label: 'Số nến', type: 'number', default: 20, min: 1 },
+  ],
+  plots: [
+    { id: 'sma', title: 'SMA', color: '#f0b90b', lineWidth: 2 },
+  ],
+  compute(bars, p, ta) {
+    return { sma: ta.sma(ta.src(bars, 'close'), p.length) };
+  },
+});
+`;
+
+FX.readUserScripts = function readUserScripts() {
+  try {
+    const list = JSON.parse(localStorage.getItem(USER_SCRIPT_STORE) || '[]');
+    if (!Array.isArray(list)) return [];
+    return list.filter((s) => s && typeof s.id === 'string' && typeof s.code === 'string');
+  } catch (e) { return []; }
+};
+
+FX.compileUserScript = function compileUserScript(script) {
+  const regId = 'user_' + script.id;
+  const backup = FX.registry[regId];
+  delete FX.registry[regId];
+  let registered = null;
+  const fx = {
+    indicator(def) {
+      if (registered) throw new Error('Chỉ gọi FX.indicator một lần');
+      FX.indicator({ ...def, id: regId });
+      registered = FX.registry[regId];
+    },
+  };
+  try {
+    if (window.Pine && Pine.looksLike(script.code)) fx.indicator(Pine.compile(script.code));
+    else new Function('FX', 'ta', script.code)(fx, ta);
+    if (!registered) throw new Error('Code phải gọi FX.indicator({...})');
+    const chosen = (script.name || '').trim().slice(0, 80);
+    script.name = chosen || registered.name || 'Indicator của tôi';
+    registered.name = script.name;
+    return '';
+  } catch (e) {
+    if (backup) FX.registry[regId] = backup;
+    else delete FX.registry[regId];
+    return e.message || String(e);
+  }
+};
+
+FX.loadUserScripts = function loadUserScripts() {
+  const bad = [];
+  for (const script of FX.readUserScripts()) {
+    const err = FX.compileUserScript(script);
+    if (err) bad.push(`${script.name || script.id}: ${err}`);
+  }
+  if (bad.length) setStatus('Lỗi code indicator: ' + bad.join(' | '), true);
+};
+
+FX.saveUserScripts = function saveUserScripts(list) {
+  localStorage.setItem(USER_SCRIPT_STORE, JSON.stringify(list));
+  if (window.Account) Account.touch();
+};
+
 // ---------------------------------------------------------------- modal (shared with other modules)
 function openModal(title, html) {
   $('modal-title').textContent = title;
   $('modal-body').innerHTML = html;
+  document.querySelector('.modal-box').classList.toggle('wide', title === 'Thêm Indicator');
   $('modal').classList.remove('hidden');
 }
-function closeModal() { $('modal').classList.add('hidden'); $('modal-body').innerHTML = ''; }
+function closeModal() {
+  $('modal').classList.add('hidden');
+  $('modal-body').innerHTML = '';
+  document.querySelector('.modal-box').classList.remove('wide');
+}
 $('modal-close').addEventListener('click', closeModal);
 $('modal').addEventListener('mousedown', (e) => { if (e.target.id === 'modal') closeModal(); });
 
@@ -143,11 +217,41 @@ const Ind = (() => {
   }
   chart.timeScale().subscribeVisibleLogicalRangeChange((r) => syncFrom(chart, r));
 
-  function createPane() {
+  function createPane(inst) {
     const el = document.createElement('div');
     el.className = 'pane';
-    el.innerHTML = '<div class="pane-chart"></div><div class="pane-legend"></div>';
+    el.dataset.uid = inst.uid;
+    if (inst.height >= 48) el.style.height = inst.height + 'px';
+    el.innerHTML = '<div class="pane-grip" title="Kéo để đổi chiều cao. Double-click để về mặc định."></div><div class="pane-chart"></div><div class="pane-legend"></div>';
     $('panes').appendChild(el);
+    const grip = el.querySelector('.pane-grip');
+    grip.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const startY = e.clientY, startH = el.offsetHeight;
+      const move = (ev) => {
+        const max = Math.max(80, $('charts').clientHeight - 100);
+        const next = Math.max(48, Math.min(max, startH + (startY - ev.clientY)));
+        el.style.height = next + 'px';
+        inst.height = Math.round(next);
+      };
+      const up = () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+        save();
+        if (window.Draw) Draw.dirty();
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    });
+    grip.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      el.style.height = '';
+      delete inst.height;
+      save();
+    });
     const c = LightweightCharts.createChart(el.querySelector('.pane-chart'), chartOptions({
       rightPriceScale: { borderColor: THEME.border, minimumWidth: 80, scaleMargins: { top: 0.1, bottom: 0.1 } },
       timeScale: { visible: false, rightOffset: 8 },
@@ -186,7 +290,7 @@ const Ind = (() => {
     const r = { inst, def, out: {}, series: {}, pane: null, err: null };
     let target = chart;
     if (def.pane === 'sub') {
-      r.pane = createPane();
+      r.pane = createPane(inst);
       target = r.pane.chart;
     }
     for (const pl of def.plots) r.series[pl.id] = addPlotSeries(target, r, pl);
@@ -199,6 +303,8 @@ const Ind = (() => {
     if (r.pane) {
       const range = chart.timeScale().getVisibleLogicalRange();
       if (range) requestAnimationFrame(() => r.pane.chart.timeScale().setVisibleLogicalRange(range));
+      const host = firstSeries(r);
+      if (host && window.Draw) Draw.attachPlus(r.pane.chart, host, r.pane.el, inst.uid, precisionOf(r));
     }
     return r;
   }
@@ -215,11 +321,19 @@ const Ind = (() => {
       for (const pl of r.def.plots) r.out[pl.id] = Array.isArray(res[pl.id]) ? res[pl.id] : [];
       r.res = res;
       r.barColor = Array.isArray(res.barColor) ? res.barColor : null;
+      r.colorOf = res.colors || null;
+      r.marks = Array.isArray(res.marks) ? res.marks : null;
+      r.lines = Array.isArray(res.lines) ? res.lines : null;
+      r.labels = Array.isArray(res.labels) ? res.labels : null;
       r.err = null;
     } catch (e) {
       r.out = {};
       r.res = {};
       r.barColor = null;
+      r.colorOf = null;
+      r.marks = [];
+      r.lines = null;
+      r.labels = null;
       r.err = e.message;
       console.error(e);
       setStatus(`Lỗi indicator ${r.def.name}: ${e.message}`, true);
@@ -230,7 +344,8 @@ const Ind = (() => {
     const v = r.out[pl.id][i], time = S.bars[i].time;
     if (v == null || !Number.isFinite(v)) return r.pane ? { time } : null;
     const it = { time, value: v };
-    if (pl.type === 'histogram' && pl.colors) it.color = v >= 0 ? pl.colors[0] : pl.colors[1];
+    if (r.colorOf && r.colorOf[pl.id] && r.colorOf[pl.id][i]) it.color = r.colorOf[pl.id][i];
+    else if (pl.type === 'histogram' && pl.colors) it.color = v >= 0 ? pl.colors[0] : pl.colors[1];
     return it;
   }
 
@@ -239,6 +354,11 @@ const Ind = (() => {
       const data = [];
       for (let i = 0; i < S.end; i++) { const it = item(r, pl, i); if (it) data.push(it); }
       r.series[pl.id].setData(data);
+    }
+    const host = r.def.plots[0] && r.series[r.def.plots[0].id];
+    if (host && host.setMarkers && Array.isArray(r.marks)) {
+      const endTime = S.end > 0 ? S.bars[S.end - 1].time : 0;
+      host.setMarkers(r.marks.filter((m) => m && m.time <= endTime).sort((a, b) => a.time - b.time));
     }
   }
 
@@ -329,6 +449,45 @@ const Ind = (() => {
   $('legend-ind').addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.stopPropagation(); });
   $('panes').addEventListener('click', onLegendClick);
 
+  function paintPineOn(ctx, r, xOf, yOf, end, textOf) {
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const ln of r.lines || []) {
+      if (!ln || ln.dead || ln.x1 >= end || ln.x2 >= end) continue;
+      const x1 = xOf(ln.x1), y1 = yOf(ln.y1), x2 = xOf(ln.x2), y2 = yOf(ln.y2);
+      if (x1 == null || y1 == null || x2 == null || y2 == null) continue;
+      const style = String(ln.style || '');
+      ctx.setLineDash(style.includes('dashed') ? [5, 4] : style.includes('dotted') ? [1, 3] : []);
+      ctx.beginPath();
+      ctx.strokeStyle = ln.color || '#2962ff';
+      ctx.lineWidth = ln.width || 1;
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    for (const lb of r.labels || []) {
+      if (!lb || lb.dead || lb.x >= end) continue;
+      const x = xOf(lb.x), y = yOf(lb.y);
+      if (x == null || y == null) continue;
+      textOf(String(lb.text || ''), x, y, lb.textColor || '#fff');
+    }
+    ctx.restore();
+  }
+
+  function firstSeries(r) {
+    const id = r.def.plots[0] && r.def.plots[0].id;
+    return (id && r.series[id]) || Object.values(r.series)[0] || null;
+  }
+  function paneHost(r) {
+    const b = r.pane.el.getBoundingClientRect();
+    return {
+      uid: r.inst.uid, el: r.pane.el, chart: r.pane.chart, series: firstSeries(r),
+      prec: precisionOf(r), top: b.top, left: b.left, w: b.width, h: b.height,
+    };
+  }
+
   const api = {
     init() {
       let saved = null;
@@ -384,17 +543,56 @@ const Ind = (() => {
     },
     paintUnder(ctx, pw, ph) {
       for (const r of list) {
-        if (!r.def.draw || r.inst.visible === false || r.err) continue;
+        const pine = (r.lines && r.lines.length && !r.pane) || (r.labels && r.labels.length && !r.pane);
+        if ((!r.def.draw && !pine) || r.inst.visible === false || r.err) continue;
         const h = drawHelpers(r, ctx, pw, ph);
         if (!h) return;
         ctx.save();
-        try { r.def.draw(ctx, h); } catch (e) {
+        try {
+          if (r.def.draw) r.def.draw(ctx, h);
+          paintPineOn(ctx, r, (i) => h.x(i), (p) => h.y(p), h.end, (text, x, y, color) => h.text(text, x, y, color));
+        } catch (e) {
           r.err = e.message;
           console.error(e);
           setStatus(`Lỗi vẽ indicator ${r.def.name}: ${e.message}`, true);
           buildLegends();
         }
         ctx.restore();
+      }
+    },
+    paintPanes() {
+      for (const r of list) {
+        if (!r.pane || r.err || r.inst.visible === false) continue;
+        const lines = (r.lines || []).filter((x) => x && !x.dead);
+        const labels = (r.labels || []).filter((x) => x && !x.dead);
+        const old = r.pane.el.querySelector(':scope > .pine-draw');
+        if (!lines.length && !labels.length) { if (old) old.remove(); continue; }
+        const plot = r.def.plots[0];
+        const series = plot && r.series[plot.id];
+        if (!series) continue;
+        let canvas = old;
+        if (!canvas) {
+          canvas = document.createElement('canvas');
+          canvas.className = 'pine-draw';
+          r.pane.el.appendChild(canvas);
+        }
+        const dpr = window.devicePixelRatio || 1;
+        const w = r.pane.el.clientWidth, h = r.pane.el.clientHeight;
+        if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+          canvas.width = Math.round(w * dpr);
+          canvas.height = Math.round(h * dpr);
+        }
+        const g = canvas.getContext('2d');
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, w, h);
+        const tsc = r.pane.chart.timeScale();
+        paintPineOn(g, { lines, labels }, (i) => tsc.logicalToCoordinate(i), (p) => series.priceToCoordinate(p), S.end, (text, x, y, color) => {
+          g.font = '11px -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+          g.fillStyle = color || '#fff';
+          g.textAlign = 'center';
+          g.textBaseline = 'bottom';
+          g.fillText(text, x, y);
+        });
       }
     },
     legend(i) {
@@ -435,18 +633,106 @@ const Ind = (() => {
       const r = list.find((x) => x.inst.uid === uid);
       if (r) { destroyRuntime(r); list = list.filter((x) => x !== r); }
       insts = insts.filter((x) => x.uid !== uid);
+      if (window.Draw) Draw.dropPane(uid);
       buildLegends(); save(); changed();
+    },
+    refreshDef(id) {
+      list = list.map((r) => {
+        if (r.inst.id !== id) return r;
+        r.inst.params = { ...defaults(FX.registry[id]), ...r.inst.params };
+        return rebuild(r);
+      });
+      buildLegends();
+      showLegend(Math.max(0, S.end - 1));
     },
     openPicker() {
       const defs = Object.values(FX.registry).sort((a, b) => a.name.localeCompare(b.name));
-      openModal('Indicators', defs.length ? defs.map((d) =>
-        `<div class="ind-item" data-id="${esc(d.id)}"><div><b>${esc(d.name)}</b><small>${esc(d.description || '')}</small></div>` +
-        `<span class="muted">${d.pane === 'sub' ? 'khung riêng' : 'trên chart'}</span></div>`).join('')
-        : '<div class="muted">Chưa có indicator nào trong static/indicators/.</div>');
+      openModal('Indicators', `<div class="modal-actions" style="margin-top:0"><button id="ind-code">Thêm Indicator</button></div>` +
+        (defs.length ? defs.map((d) =>
+          `<div class="ind-item" data-id="${esc(d.id)}"><div><b>${esc(d.name)}</b><small>${esc(d.description || '')}</small></div>` +
+          `<span class="muted">${d.id.startsWith('user_') ? 'code của bạn' : d.pane === 'sub' ? 'khung riêng' : 'trên chart'}</span></div>`).join('')
+          : '<div class="muted">Chưa có indicator nào.</div>'));
+      $('ind-code').addEventListener('click', () => api.openEditor());
       $('modal-body').querySelectorAll('.ind-item').forEach((el) => el.addEventListener('click', () => {
         api.add(el.dataset.id);
         setStatus(`Đã thêm ${FX.registry[el.dataset.id].name}. Bấm ⚙ trên legend để chỉnh thông số.`);
       }));
+    },
+    openEditor(editId) {
+      let scripts = FX.readUserScripts();
+      let current = editId || (scripts[0] && scripts[0].id) || '';
+      const render = () => {
+        const script = scripts.find((s) => s.id === current);
+        const code = script ? script.code : USER_SCRIPT_SAMPLE;
+        const items = scripts.map((s) =>
+          `<button type="button" data-script="${esc(s.id)}" class="${s.id === current ? 'active' : ''}">${esc(s.name || 'Chưa đặt tên')}</button>`).join('');
+        openModal('Thêm Indicator', `<div class="code-lab">
+          <div class="code-list">${items}<button type="button" id="ind-new">+ Mới</button></div>
+          <div>
+            <input id="ind-name" type="text" maxlength="80" placeholder="Tên indicator" value="${esc(script ? script.name : '')}">
+            <textarea id="ind-src" spellcheck="false">${esc(code)}</textarea>
+            <div id="ind-src-err" class="acc-msg neg"></div>
+            <div class="modal-actions">
+              <button id="ind-back">Danh sách</button>
+              <button id="ind-del"${script ? '' : ' disabled'}>Xóa</button>
+              <span style="flex:1"></span>
+              <button id="ind-save">Lưu</button>
+              <button id="ind-use" class="active">Thêm vào chart</button>
+            </div>
+          </div></div>`);
+        const area = $('ind-src');
+        area.addEventListener('keydown', (e) => {
+          if (e.key !== 'Tab') return;
+          e.preventDefault();
+          const at = area.selectionStart;
+          area.value = area.value.slice(0, at) + '  ' + area.value.slice(area.selectionEnd);
+          area.selectionStart = area.selectionEnd = at + 2;
+        });
+        $('ind-back').onclick = () => api.openPicker();
+        $('ind-new').onclick = () => { current = ''; render(); };
+        $('modal-body').querySelectorAll('[data-script]').forEach((btn) => {
+          btn.onclick = () => { current = btn.dataset.script; render(); };
+        });
+        $('ind-save').onclick = () => saveDraft(false);
+        $('ind-use').onclick = () => saveDraft(true);
+        if ($('ind-del')) $('ind-del').onclick = () => {
+          if (!current || !confirm('Xóa indicator này?')) return;
+          const regId = 'user_' + current;
+          scripts = scripts.filter((s) => s.id !== current);
+          FX.saveUserScripts(scripts);
+          delete FX.registry[regId];
+          for (const inst of [...insts]) if (inst.id === regId) api.remove(inst.uid);
+          current = scripts[0] ? scripts[0].id : '';
+          render();
+        };
+        function saveDraft(addToChart) {
+          const text = area.value;
+          const name = ($('ind-name').value || '').trim().slice(0, 80);
+          let script = scripts.find((s) => s.id === current);
+          if (!script) {
+            script = { id: Math.random().toString(36).slice(2, 10), name, code: text };
+            scripts.push(script);
+            current = script.id;
+          } else {
+            script.code = text;
+            script.name = name;
+          }
+          const err = FX.compileUserScript(script);
+          $('ind-src-err').textContent = err;
+          FX.saveUserScripts(scripts);
+          if (err) return;
+          api.refreshDef('user_' + script.id);
+          if (addToChart) {
+            api.add('user_' + script.id);
+            closeModal();
+            setStatus(`Đã thêm ${script.name}.`);
+            return;
+          }
+          setStatus(`Đã lưu ${script.name}.`);
+          render();
+        }
+      };
+      render();
     },
     edit(uid) {
       const r = list.find((x) => x.inst.uid === uid);
@@ -515,6 +801,44 @@ const Ind = (() => {
         showLegend(S.end - 1);
       };
     },
+    hitPane(clientX, clientY) {
+      for (const r of list) {
+        if (!r.pane || r.inst.visible === false) continue;
+        const h = paneHost(r);
+        if (clientX < h.left || clientX > h.left + h.w || clientY < h.top || clientY > h.top + h.h) continue;
+        const y = clientY - h.top;
+        return { ...h, x: clientX - h.left, y, price: h.series ? h.series.coordinateToPrice(y) : null };
+      }
+      return null;
+    },
+    paneGeom(uid) {
+      const r = list.find((x) => x.inst.uid === uid && x.pane);
+      return r ? paneHost(r) : null;
+    },
+    paneHosts() {
+      return list.filter((r) => r.pane).map(paneHost);
+    },
+    layoutSig() {
+      return list.filter((r) => r.pane).map((r) => {
+        const s = firstSeries(r);
+        const y = s ? s.priceToCoordinate(50) : null;
+        return r.inst.uid + ':' + r.pane.el.clientHeight + ':' + (y == null ? '' : Math.round(y));
+      }).join(',');
+    },
   };
   return api;
 })();
+
+const IND_LEGEND_KEY = 'fxlab_ind_legend_hidden';
+function applyIndLegend() {
+  const hidden = localStorage.getItem(IND_LEGEND_KEY) === '1';
+  document.body.classList.toggle('hide-ind-legend', hidden);
+  const btn = $('btn-ind-legend');
+  if (btn) btn.title = hidden ? 'Hiện tên indicator' : 'Ẩn tên indicator';
+}
+applyIndLegend();
+$('btn-ind-legend').addEventListener('click', (e) => {
+  e.stopPropagation();
+  localStorage.setItem(IND_LEGEND_KEY, document.body.classList.contains('hide-ind-legend') ? '0' : '1');
+  applyIndLegend();
+});

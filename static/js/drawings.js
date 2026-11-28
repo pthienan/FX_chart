@@ -97,7 +97,7 @@ const Draw = (() => {
     replay: 'Click lên nến muốn bắt đầu replay (các nến sau đó sẽ bị ẩn).',
     price: 'Click lên chart để lấy giá cho lệnh chờ.',
     trend: 'Trendline: click điểm thứ nhất.',
-    hline: 'Click để đặt đường ngang.',
+    hline: 'Click lên chart giá, hoặc lên khung indicator (RSI…), để đặt đường ngang.',
     vline: 'Click để đặt đường dọc.',
     rect: 'Rectangle: click góc thứ nhất, rồi click góc đối diện.',
     fib: 'Fib Retracement: click đầu sóng, rồi click cuối sóng.',
@@ -457,7 +457,7 @@ const Draw = (() => {
     return null;
   }
   function hitTest(x, y) {
-    const order = [...S.drawings].reverse();
+    const order = [...S.drawings].reverse().filter((d) => !d.pane);
     for (const d of order) for (const h of handles(d)) if (Math.hypot(h.x - x, h.y - y) <= HIT + 2) return { d, h: h.id };
     for (const d of order) { const e = posEdgeHit(d, x, y); if (e) return { d, h: e }; }
     for (const d of order) if (bodyHit(d, x, y)) return { d, h: 'body' };
@@ -616,6 +616,85 @@ const Draw = (() => {
     for (const pt of d.pts) { priceTag(pt.p, c, pw); timeTag(pt.t, c, pw, ph); }
   }
 
+  const panePriceLines = new Map();
+  function priceLineOpts(d) {
+    const style = opt(d, 'style');
+    return {
+      price: d.pts[0].p,
+      color: colorOf(d),
+      lineWidth: Math.max(1, Math.min(4, Math.round(widthOf(d) || 1))),
+      lineStyle: style === 'dotted' ? 1 : style === 'dashed' ? 2 : 0,
+      axisLabelVisible: opt(d, 'showPrice') !== false,
+      title: '',
+    };
+  }
+  function samePane(a, b) { return Number(a) === Number(b); }
+
+  function paintPaneLines() {
+    const hosts = Ind.paneHosts ? Ind.paneHosts() : [];
+    const dpr = window.devicePixelRatio || 1;
+    const alive = new Set();
+    for (const host of hosts) {
+      const lines = S.drawings.filter((d) => d.type === 'hline' && samePane(d.pane, host.uid));
+      let canvas = host.el.querySelector(':scope > .pane-draw');
+      if (!lines.length) { if (canvas) canvas.remove(); }
+      else {
+        if (!canvas) {
+          canvas = document.createElement('canvas');
+          canvas.className = 'pane-draw';
+          host.el.appendChild(canvas);
+        }
+        const w = host.el.clientWidth, h = host.el.clientHeight;
+        if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+          canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+        }
+        const g = canvas.getContext('2d');
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, w, h);
+        const pw = plotEdge(host.chart, host.el);
+        for (const d of lines) {
+          if (d.id != null) alive.add(d.id);
+          if (host.series) {
+            const opts = priceLineOpts(d);
+            let rec = panePriceLines.get(d.id);
+            if (!rec || rec.series !== host.series) {
+              if (rec) { try { rec.series.removePriceLine(rec.line); } catch (e) { /* series đã bỏ */ } }
+              try {
+                rec = { series: host.series, line: host.series.createPriceLine(opts) };
+                panePriceLines.set(d.id, rec);
+              } catch (e) { rec = null; }
+            } else {
+              try { rec.line.applyOptions(opts); } catch (e) { /* series đã bỏ */ }
+            }
+          }
+          if (!host.series || pw < 1) continue;
+          const y = host.series.priceToCoordinate(d.pts[0].p);
+          if (y == null) continue;
+          const col = colorOf(d);
+          g.strokeStyle = col; g.lineWidth = widthOf(d); g.setLineDash(dashOf(d));
+          g.beginPath(); g.moveTo(0, y); g.lineTo(pw, y); g.stroke();
+          g.setLineDash([]);
+          if (opt(d, 'showPrice') !== false) {
+            const label = Number(d.pts[0].p).toFixed(host.prec);
+            g.font = FONT; g.fillStyle = col; g.textAlign = 'right'; g.textBaseline = 'bottom';
+            g.fillText(label, pw - 4, y - 2);
+          }
+          const txt = opt(d, 'text');
+          if (txt) { g.font = FONT; g.fillStyle = opt(d, 'textColor') || '#d1d4dc'; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillText(txt, 8, y - 2); }
+          if (shapeActive(d)) {
+            g.fillStyle = THEME.bg; g.strokeStyle = col; g.lineWidth = 1.5;
+            g.beginPath(); g.arc(pw / 2, y, 4.5, 0, Math.PI * 2); g.fill(); g.stroke();
+          }
+        }
+      }
+    }
+    for (const [id, rec] of panePriceLines) {
+      if (alive.has(id)) continue;
+      try { rec.series.removePriceLine(rec.line); } catch (e) { /* series đã bỏ */ }
+      panePriceLines.delete(id);
+    }
+  }
+
   function paint() {
     const dpr = window.devicePixelRatio || 1, w = wrap.clientWidth, h = wrap.clientHeight;
     for (const [c, g] of [[cv, ctx], [cu, ctxU]]) {
@@ -630,13 +709,15 @@ const Draw = (() => {
     ctxU.save();
     ctxU.beginPath(); ctxU.rect(0, 0, pw, ph); ctxU.clip();
     Ind.paintUnder(ctxU, pw, ph);
+    if (Ind.paintPanes) Ind.paintPanes();
     ctxU.restore();
-    const shapes = [...S.drawings, pending, measure].filter(Boolean);
+    const shapes = [...S.drawings, pending, measure].filter((d) => d && !d.pane);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
     for (const d of shapes) drawShape(d, pw, ph);
     ctx.restore();
     for (const d of shapes) axisLabels(d, pw, ph);
+    paintPaneLines();
   }
 
   function frame() {
@@ -645,7 +726,7 @@ const Draw = (() => {
     const r = ts().getVisibleLogicalRange();
     const ref = S.bars[0].close;
     const sig = [wrap.clientWidth, wrap.clientHeight, paneW(), r ? r.from.toFixed(3) : '', r ? r.to.toFixed(3) : '',
-      Y(ref), Y(ref * 1.01), S.end, S.tf, S.tz, window.devicePixelRatio].join('|');
+      Y(ref), Y(ref * 1.01), S.end, S.tf, S.tz, window.devicePixelRatio, Ind.layoutSig ? Ind.layoutSig() : ''].join('|');
     if (sig === lastSig && !isDirty) return;
     lastSig = sig; isDirty = false;
     paint();
@@ -1020,9 +1101,24 @@ const Draw = (() => {
     if (!keepTool) api.setTool(null);
   }
 
+  function hitPaneLine(hit) {
+    if (!hit || !hit.series) return null;
+    for (const d of [...S.drawings].reverse()) {
+      if (d.type !== 'hline' || !samePane(d.pane, hit.uid)) continue;
+      const y = hit.series.priceToCoordinate(d.pts[0].p);
+      if (y != null && Math.abs(y - hit.y) <= HIT) return d;
+    }
+    return null;
+  }
+  function setPaneCursor(kind) {
+    const root = $('panes');
+    root.classList.toggle('cur-ns', kind === 'ns');
+    root.classList.toggle('cur-draw', kind === 'draw');
+  }
+
   // ------------------------------------------------------------ mouse
   wrap.addEventListener('mousedown', (e) => {
-    if (e.button !== 0 || e.target.closest('#legend .lg-row, #draw-props')) return;
+    if (e.button !== 0 || e.target.closest('#legend .lg-row, #btn-ind-legend, #draw-props, .price-plus, #price-plus-menu')) return;
     const { x, y } = local(e);
     if (x > paneW() || y > paneH()) return;
     // preventDefault below keeps focus on the last input/select, which would swallow Delete / arrow keys.
@@ -1042,7 +1138,60 @@ const Draw = (() => {
     if (sel) select(null);
   }, true);
 
+  $('panes').addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.target.closest('.pane-grip, .lg-row, button, .price-plus')) return;
+    const hit = Ind.hitPane(e.clientX, e.clientY);
+    if (!hit) return;
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    if (S.tool === 'hline') {
+      if (hit.price == null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const d = newDrawing('hline', [{ t: 0, p: hit.price }]);
+      d.pane = hit.uid;
+      commit(d);
+      if (!keepTool) api.setTool(null);
+      return;
+    }
+    if (S.tool) return;
+    const found = hitPaneLine(hit);
+    if (!found) { if (sel && sel.pane) select(null); return; }
+    e.preventDefault();
+    e.stopPropagation();
+    select(found);
+    drag = { d: found, h: 0, moved: false, orig: JSON.parse(JSON.stringify(found)) };
+  }, true);
+
+  $('panes').addEventListener('dblclick', (e) => {
+    if (S.tool || e.target.closest('.pane-grip, .lg-row')) return;
+    const found = hitPaneLine(Ind.hitPane(e.clientX, e.clientY));
+    if (!found) return;
+    e.preventDefault();
+    e.stopPropagation();
+    select(found);
+    openSettings(found);
+  }, true);
+
+  $('panes').addEventListener('contextmenu', (e) => {
+    if (S.tool || e.target.closest('.pane-grip, .lg-row')) return;
+    const found = hitPaneLine(Ind.hitPane(e.clientX, e.clientY));
+    if (!found) return;
+    e.preventDefault();
+    select(found);
+  });
+
   window.addEventListener('mousemove', (e) => {
+    if (drag && drag.d && drag.d.pane) {
+      const g = Ind.paneGeom(drag.d.pane);
+      if (g && g.series) {
+        const price = g.series.coordinateToPrice(e.clientY - g.top);
+        if (price != null) drag.d.pts[0].p = price;
+      }
+      drag.moved = true;
+      dirty();
+      setPaneCursor('ns');
+      return;
+    }
     const { x, y } = local(e);
     if (drag) { applyDrag(x, y); drag.moved = true; dirty(); return; }
     const inside = e.target instanceof Element && wrap.contains(e.target) && x >= 0 && y >= 0 && x <= paneW() && y <= paneH() && !e.target.closest('#legend .lg-row, #draw-props');
@@ -1053,6 +1202,10 @@ const Draw = (() => {
     const h = !S.tool && inside ? hitTest(x, y) : null;
     if ((h && h.d) !== (hover && hover.d) || (h && h.h) !== (hover && hover.h)) { hover = h; dirty(); }
     setCursor(S.tool && inside ? 'draw' : drag ? cursorFor(drag.h) : h ? cursorFor(h.h) : null);
+    const over = e.target instanceof Element && e.target.closest('#panes') ? Ind.hitPane(e.clientX, e.clientY) : null;
+    if (over && S.tool === 'hline') setPaneCursor('draw');
+    else if (over && !S.tool && hitPaneLine(over)) setPaneCursor('ns');
+    else setPaneCursor(null);
   });
   function cursorFor(id) {
     if (id === 'body') return 'move';
@@ -1088,9 +1241,101 @@ const Draw = (() => {
     dirty();
   });
 
+  let plusTarget = null;
+  const plusMenu = document.createElement('div');
+  plusMenu.id = 'price-plus-menu';
+  plusMenu.className = 'hidden';
+  document.body.appendChild(plusMenu);
+  function hidePlusMenu() {
+    plusMenu.classList.add('hidden');
+    document.querySelectorAll('.price-plus.open').forEach((b) => b.classList.remove('open'));
+  }
+  function levelText(price, digits) {
+    return Number(price).toFixed(digits == null ? S.digits : digits);
+  }
+  function placeHline(price, paneUid, digits) {
+    const d = newDrawing('hline', [{ t: 0, p: +levelText(price, digits) }]);
+    if (paneUid) d.pane = paneUid;
+    commit(d);
+    hidePlusMenu();
+  }
+  function openPlusMenu(btn, price, paneUid, digits) {
+    const label = levelText(price, digits);
+    plusMenu.innerHTML = `<button type="button">Vẽ đường ngang tại ${label}<kbd>Alt+H</kbd></button>`;
+    const r = btn.getBoundingClientRect();
+    plusMenu.style.left = Math.max(8, r.left - 268) + 'px';
+    plusMenu.style.top = Math.max(8, r.top - 4) + 'px';
+    plusMenu.classList.remove('hidden');
+    btn.classList.add('open');
+    plusMenu.querySelector('button').onclick = (e) => {
+      e.stopPropagation();
+      placeHline(price, paneUid, digits);
+    };
+  }
+  function plotEdge(hostChart, parent) {
+    const tw = hostChart.timeScale().width();
+    if (tw > 40) return tw;
+    let scaleW = 80;
+    try {
+      const w = hostChart.priceScale('right').width();
+      if (w > 0) scaleW = w;
+    } catch (e) { /* thang giá chưa đo */ }
+    return Math.max(0, parent.clientWidth - scaleW);
+  }
+  function movePlus(btn, hostChart, series, parent, paneUid, digits, y) {
+    const price = series.coordinateToPrice(y);
+    if (price == null || !Number.isFinite(price)) return false;
+    plusTarget = { price, paneUid, digits };
+    btn._price = price;
+    btn.style.left = (plotEdge(hostChart, parent) + 4) + 'px';
+    btn.style.top = Math.max(0, y - 11) + 'px';
+    btn.classList.remove('hidden');
+    return true;
+  }
+  function attachPlus(hostChart, series, parent, paneUid, digits) {
+    if (!series || parent.querySelector(':scope > .price-plus')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'price-plus hidden';
+    btn.textContent = '+';
+    btn.title = 'Vẽ đường ngang tại mức này';
+    parent.appendChild(btn);
+    const boxOf = () => (parent.querySelector('.pane-chart, #chart') || parent).getBoundingClientRect();
+    parent.addEventListener('pointermove', (e) => {
+      if (btn.classList.contains('open') || e.target.closest('.pane-grip')) return;
+      movePlus(btn, hostChart, series, parent, paneUid, digits, e.clientY - boxOf().top);
+    });
+    parent.addEventListener('pointerleave', (e) => {
+      if (e.relatedTarget && (parent.contains(e.relatedTarget) || plusMenu.contains(e.relatedTarget))) return;
+      if (!btn.classList.contains('open')) btn.classList.add('hidden');
+    });
+    hostChart.subscribeCrosshairMove((param) => {
+      if (btn.classList.contains('open') || !param.point || param.point.y == null) return;
+      movePlus(btn, hostChart, series, parent, paneUid, digits, param.point.y);
+    });
+    btn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (btn._price == null) return;
+      openPlusMenu(btn, btn._price, paneUid, digits);
+    });
+  }
+  document.addEventListener('mousedown', (e) => {
+    if (e.target.closest('#price-plus-menu, .price-plus')) return;
+    hidePlusMenu();
+  });
+
   // ------------------------------------------------------------ public api
   const api = {
     dirty,
+    dropPane(uid) {
+      const gone = S.drawings.some((d) => samePane(d.pane, uid));
+      if (!gone) return;
+      S.drawings = S.drawings.filter((d) => !samePane(d.pane, uid));
+      if (sel && sel.pane === uid) select(null);
+      save();
+      dirty();
+    },
     reset() { sel = hover = drag = pending = measure = null; undoStack = []; redoStack = []; renderProps(); dirty(); syncHist(); },
     refreshProps() { renderProps(); },
     setTool(t) {
@@ -1158,6 +1403,13 @@ const Draw = (() => {
     },
     toggleMagnet() { magnet = !magnet; return magnet; },
     toggleKeep() { keepTool = !keepTool; return keepTool; },
+    attachPlus,
+    hlineAtCursor() {
+      if (!plusTarget) return;
+      placeHline(plusTarget.price, plusTarget.paneUid, plusTarget.digits);
+    },
   };
+  attachPlus(chart, candle, wrap, null, null);
   return api;
 })();
+window.Draw = Draw;

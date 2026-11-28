@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>FX Lab</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=6">
 </head>
 <body>
 <header id="toolbar">
@@ -65,7 +65,7 @@
       <canvas id="ind-underlay"></canvas>
       <div id="chart"></div>
       <canvas id="draw-overlay"></canvas>
-      <div id="legend"><div id="legend-main"></div><div id="legend-ind"></div></div>
+      <div id="legend"><div id="legend-main"></div><button type="button" id="btn-ind-legend" title="Ẩn tên indicator"><i></i></button><div id="legend-ind"></div></div>
       <div id="draw-props" class="hidden"></div>
     </div>
     <div id="panes"></div>
@@ -124,10 +124,11 @@
 
 <script src="/static/lightweight-charts.js"></script>
 <script src="/static/js/core.js"></script>
-<script src="/static/js/indicators.js"></script>
-<script src="/static/js/drawings.js"></script>
+<script src="/static/js/pine.js?v=6"></script>
+<script src="/static/js/indicators.js?v=5"></script>
+<script src="/static/js/drawings.js?v=7"></script>
 <script src="/static/js/trading.js"></script>
 <script src="/static/js/account.js"></script>
-<script src="/static/js/main.js"></script>
+<script src="/static/js/main.js?v=2"></script>
 </body>
 </html>

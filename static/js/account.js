@@ -25,9 +25,11 @@ const Account = (() => {
     let indicators = null;
     let drawDefaults = {};
     let tfPins = null;
+    let userScripts = null;
     try { indicators = JSON.parse(localStorage.getItem('fxlab_indicators') || 'null'); } catch (e) { indicators = null; }
     try { drawDefaults = JSON.parse(localStorage.getItem('fxlab_draw_defaults') || '{}'); } catch (e) { drawDefaults = {}; }
     try { tfPins = JSON.parse(localStorage.getItem('fxlab_tf_pins') || 'null'); } catch (e) { tfPins = null; }
+    try { userScripts = JSON.parse(localStorage.getItem('fxlab_user_scripts') || 'null'); } catch (e) { userScripts = null; }
     const profile = {
       symbol: localStorage.getItem('fxlab_symbol') || '',
       tz: localStorage.getItem('fxlab_tz'),
@@ -35,6 +37,7 @@ const Account = (() => {
       indicators, drawDefaults, symbols,
     };
     if (Array.isArray(tfPins)) profile.tfPins = tfPins;
+    if (Array.isArray(userScripts)) profile.userScripts = userScripts;
     return profile;
   }
 
@@ -45,6 +48,7 @@ const Account = (() => {
       n += Array.isArray(state.drawings) ? state.drawings.length : 0;
       n += Array.isArray(state.trades) ? state.trades.length : 0;
     }
+    n += Array.isArray(profile.userScripts) ? profile.userScripts.length : 0;
     return n;
   }
 
@@ -62,6 +66,10 @@ const Account = (() => {
     localStorage.setItem('fxlab_draw_defaults', JSON.stringify(profile.drawDefaults || {}));
     if (Array.isArray(profile.tfPins)) {
       localStorage.setItem('fxlab_tf_pins', JSON.stringify(profile.tfPins.filter((tf) => ['M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1'].includes(tf))));
+    }
+    if (Array.isArray(profile.userScripts)) {
+      const scripts = profile.userScripts.filter((s) => s && typeof s.id === 'string' && typeof s.code === 'string' && typeof s.name === 'string');
+      localStorage.setItem('fxlab_user_scripts', JSON.stringify(scripts));
     }
     for (const [sym, state] of Object.entries(profile.symbols || {})) {
       if (/^[A-Z0-9]{6}$/.test(sym) && state && typeof state === 'object') {

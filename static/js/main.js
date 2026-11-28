@@ -109,6 +109,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.shiftKey && e.key.toUpperCase() === 'B') placeOrder('buy');
   else if (e.shiftKey && e.key.toUpperCase() === 'S') placeOrder('sell');
   else if (e.ctrlKey && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); Draw.undo(); }
+  else if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'h') { e.preventDefault(); Draw.hlineAtCursor(); }
   else if (e.ctrlKey && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); Draw.redo(); }
   else if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') setSideHidden(!document.body.classList.contains('side-hidden'));
 });
@@ -144,6 +145,7 @@ async function loadIndicatorPlugins() {
   S.tz = +(localStorage.getItem('fxlab_tz') ?? 7);
   $('tz').value = String(S.tz);
   await loadIndicatorPlugins();
+  FX.loadUserScripts();
   Ind.init();
   let syms = ['EURUSD'];
   try { syms = await (await fetch(STATIC_SITE ? '/api/symbols.json' : '/api/symbols')).json(); } catch (e) { setStatus('Không kết nối được server.', true); }
