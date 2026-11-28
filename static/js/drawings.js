@@ -1287,7 +1287,8 @@ const Draw = (() => {
     if (price == null || !Number.isFinite(price)) return false;
     plusTarget = { price, paneUid, digits };
     btn._price = price;
-    btn.style.left = (plotEdge(hostChart, parent) + 4) + 'px';
+    // TradingView puts the + on the chart, just left of the price scale, so the price itself stays clickable.
+    btn.style.left = Math.max(0, plotEdge(hostChart, parent) - 22 - 6) + 'px';
     btn.style.top = Math.max(0, y - 11) + 'px';
     btn.classList.remove('hidden');
     return true;

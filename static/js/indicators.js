@@ -201,6 +201,23 @@ const Ind = (() => {
   const defaults = (def) => Object.fromEntries(def.params.map((p) => [p.id, p.default]));
   const plotColor = (r, pl) => (r.inst.colors && r.inst.colors[pl.id]) || pl.color || '#2962ff';
   const plotWidth = (r, pl) => (r.inst.widths && r.inst.widths[pl.id]) || pl.lineWidth || 1;
+  const plotShown = (r, pl) => !(r.inst.hidden && r.inst.hidden[pl.id]);
+  function levelOf(r, pl) {
+    if (pl.level == null) return null;
+    const o = r.inst.levels && r.inst.levels[pl.id];
+    return Number.isFinite(+o) ? +o : pl.level;
+  }
+  function ensureLevelPlots(def) {
+    if (!def || def._levelsReady || !Array.isArray(def.levels)) return;
+    def._levelsReady = true;
+    const nameOf = (v) => (v === 70 ? 'Upper Bound' : v === 50 ? 'Middle Bound' : v === 30 ? 'Lower Bound' : String(v));
+    def.levels.forEach((lv, i) => {
+      def.plots.push({
+        id: 'lvl' + i, title: nameOf(lv), color: '#787b86', lineWidth: 1,
+        style: 'dashed', level: lv, legend: false,
+      });
+    });
+  }
   const precisionOf = (r) => (r.pane ? r.def.precision ?? 2 : S.digits);
 
   function title(r) {
@@ -287,18 +304,16 @@ const Ind = (() => {
   function createRuntime(inst) {
     const def = FX.registry[inst.id];
     if (!def) return null;
+    ensureLevelPlots(def);
     const r = { inst, def, out: {}, series: {}, pane: null, err: null };
     let target = chart;
     if (def.pane === 'sub') {
       r.pane = createPane(inst);
       target = r.pane.chart;
     }
-    for (const pl of def.plots) r.series[pl.id] = addPlotSeries(target, r, pl);
-    if (r.pane && def.levels && def.plots.length) {
-      const s0 = r.series[def.plots[0].id];
-      for (const lv of def.levels) {
-        s0.createPriceLine({ price: lv, color: '#4a4e5a', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
-      }
+    for (const pl of def.plots) {
+      if (pl.hidden) continue;
+      r.series[pl.id] = addPlotSeries(target, r, pl);
     }
     if (r.pane) {
       const range = chart.timeScale().getVisibleLogicalRange();
@@ -325,6 +340,7 @@ const Ind = (() => {
       r.marks = Array.isArray(res.marks) ? res.marks : null;
       r.lines = Array.isArray(res.lines) ? res.lines : null;
       r.labels = Array.isArray(res.labels) ? res.labels : null;
+      r.fills = Array.isArray(res.fills) ? res.fills : null;
       r.err = null;
     } catch (e) {
       r.out = {};
@@ -334,6 +350,7 @@ const Ind = (() => {
       r.marks = [];
       r.lines = null;
       r.labels = null;
+      r.fills = null;
       r.err = e.message;
       console.error(e);
       setStatus(`Lỗi indicator ${r.def.name}: ${e.message}`, true);
@@ -341,7 +358,9 @@ const Ind = (() => {
   }
 
   function item(r, pl, i) {
-    const v = r.out[pl.id][i], time = S.bars[i].time;
+    const arr = r.out && r.out[pl.id];
+    if (!arr || !S.bars[i]) return null;
+    const v = arr[i], time = S.bars[i].time;
     if (v == null || !Number.isFinite(v)) return r.pane ? { time } : null;
     const it = { time, value: v };
     if (r.colorOf && r.colorOf[pl.id] && r.colorOf[pl.id][i]) it.color = r.colorOf[pl.id][i];
@@ -351,11 +370,46 @@ const Ind = (() => {
 
   function setAll(r) {
     for (const pl of r.def.plots) {
+      const series = r.series[pl.id];
+      if (!series || pl.hidden) continue;
+      if (!plotShown(r, pl)) { series.setData([]); continue; }
+      const lv = levelOf(r, pl);
+      if (lv != null) {
+        const data = [];
+        for (let i = 0; i < S.end; i++) if (S.bars[i]) data.push({ time: S.bars[i].time, value: lv });
+        series.applyOptions({
+          color: plotColor(r, pl), lineWidth: plotWidth(r, pl),
+          lineStyle: pl.style === 'dashed' ? 2 : pl.style === 'dotted' ? 1 : 0,
+        });
+        series.setData(data);
+        continue;
+      }
+      const arr = r.out && r.out[pl.id];
+      if (!arr) continue;
+      const colors = r.colorOf && r.colorOf[pl.id];
       const data = [];
-      for (let i = 0; i < S.end; i++) { const it = item(r, pl, i); if (it) data.push(it); }
-      r.series[pl.id].setData(data);
+      if (colors) {
+        // Default Pine plot() joins the last real value across `na`.
+        // A transparent pivot is still a joint, so a divergence segment
+        // only spans the gap to the previous pivot.
+        const pts = [];
+        for (let i = 0; i < S.end; i++) {
+          const v = arr[i];
+          if (v == null || !Number.isFinite(v)) continue;
+          pts.push({ time: S.bars[i].time, value: v, color: colors[i] || pl.color || '#2962ff' });
+        }
+        // The chart colors a segment from its left point. Pine colors the
+        // segment by the point it arrives at, so hand that color to the left.
+        for (let k = 0; k < pts.length; k++) {
+          const arrive = pts[Math.min(k + 1, pts.length - 1)];
+          data.push({ time: pts[k].time, value: pts[k].value, color: arrive.color });
+        }
+      } else {
+        for (let i = 0; i < S.end; i++) { const it = item(r, pl, i); if (it) data.push(it); }
+      }
+      series.setData(data);
     }
-    const host = r.def.plots[0] && r.series[r.def.plots[0].id];
+    const host = firstSeries(r);
     if (host && host.setMarkers && Array.isArray(r.marks)) {
       const endTime = S.end > 0 ? S.bars[S.end - 1].time : 0;
       host.setMarkers(r.marks.filter((m) => m && m.time <= endTime).sort((a, b) => a.time - b.time));
@@ -449,6 +503,65 @@ const Ind = (() => {
   $('legend-ind').addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.stopPropagation(); });
   $('panes').addEventListener('click', onLegendClick);
 
+  function paintFills(ctx, fills, out, xOf, yOf, i0, i1) {
+    if (!fills || !out) return;
+    const finite = (v) => v != null && Number.isFinite(v);
+    // The second plot is the midline. The color only covers the oscillator
+    // where it has crossed into the band, up to the band edge toward that midline.
+    const edgeOf = (osc, other, lo, hi) => {
+      if (!finite(other)) return osc >= (lo + hi) / 2 ? hi : lo;
+      return other >= osc ? Math.min(other, hi) : Math.max(other, lo);
+    };
+    const drawPoly = (poly) => {
+      const pts = [];
+      for (const p of poly) {
+        const x = xOf(p.x), y = yOf(p.y);
+        if (x == null || y == null) return;
+        pts.push(x, y);
+      }
+      if (pts.length < 6) return;
+      ctx.beginPath();
+      ctx.moveTo(pts[0], pts[1]);
+      for (let k = 2; k < pts.length; k += 2) ctx.lineTo(pts[k], pts[k + 1]);
+      ctx.closePath();
+      ctx.fill();
+    };
+    ctx.save();
+    for (const f of fills) {
+      const a = out[f.a], b = out[f.b];
+      if (!a || !b) continue;
+      const solid = f.color != null && f.top == null;
+      if (!solid) {
+        const yTop = yOf(f.top), yBot = yOf(f.bottom);
+        if (yTop == null || yBot == null || yTop === yBot) continue;
+        const grad = ctx.createLinearGradient(0, yTop, 0, yBot);
+        grad.addColorStop(0, f.topColor || 'rgba(0,0,0,0)');
+        grad.addColorStop(1, f.bottomColor || 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+      } else ctx.fillStyle = f.color;
+      const lo = solid ? null : Math.min(f.top, f.bottom);
+      const hi = solid ? null : Math.max(f.top, f.bottom);
+      for (let i = i0; i < i1; i++) {
+        const a0 = a[i], a1 = a[i + 1], b0 = b[i], b1 = b[i + 1];
+        if (!finite(a0) || !finite(a1)) continue;
+        if (solid) {
+          if (!finite(b0) || !finite(b1)) continue;
+          drawPoly([{ x: i, y: a0 }, { x: i + 1, y: a1 }, { x: i + 1, y: b1 }, { x: i, y: b0 }]);
+          continue;
+        }
+        const inBand = (v) => v >= lo && v <= hi;
+        if (!inBand(a0) && !inBand(a1)) continue;
+        const c0 = Math.min(hi, Math.max(lo, a0));
+        const c1 = Math.min(hi, Math.max(lo, a1));
+        const e0 = edgeOf(c0, finite(b0) ? b0 : null, lo, hi);
+        const e1 = edgeOf(c1, finite(b1) ? b1 : null, lo, hi);
+        if (Math.abs(c0 - e0) < 1e-6 && Math.abs(c1 - e1) < 1e-6) continue;
+        drawPoly([{ x: i, y: c0 }, { x: i + 1, y: c1 }, { x: i + 1, y: e1 }, { x: i, y: e0 }]);
+      }
+    }
+    ctx.restore();
+  }
+
   function paintPineOn(ctx, r, xOf, yOf, end, textOf) {
     ctx.save();
     ctx.lineJoin = 'round';
@@ -488,6 +601,26 @@ const Ind = (() => {
     };
   }
 
+  function syncPanes() {
+    const range = chart.timeScale().getVisibleLogicalRange();
+    const was = syncing;
+    syncing = true;
+    for (const r of list) {
+      if (!r.pane) continue;
+      const box = r.pane.el.querySelector('.pane-chart');
+      if (!box) continue;
+      const w = box.clientWidth, h = box.clientHeight;
+      if (w > 20 && h > 20) {
+        try { r.pane.chart.resize(w, h); } catch (e) {}
+      }
+      if (range) {
+        try { r.pane.chart.timeScale().setVisibleLogicalRange(range); } catch (e) {}
+      }
+    }
+    syncing = was;
+    if (window.Draw && Draw.dirty) Draw.dirty();
+  }
+
   const api = {
     init() {
       let saved = null;
@@ -525,10 +658,14 @@ const Ind = (() => {
         setAll(r);
       }
     },
+    syncPanes,
     step(i) {
       for (const r of list) {
         if (r.def.recompute) { compute(r, S.bars.slice(0, S.end)); setAll(r); continue; }
         for (const pl of r.def.plots) {
+          if (pl.hidden || !r.series[pl.id] || !plotShown(r, pl)) continue;
+          const lv = levelOf(r, pl);
+          if (lv != null) { r.series[pl.id].update({ time: S.bars[i].time, value: lv }); continue; }
           const it = item(r, pl, i);
           if (it) r.series[pl.id].update(it);
         }
@@ -565,10 +702,10 @@ const Ind = (() => {
         if (!r.pane || r.err || r.inst.visible === false) continue;
         const lines = (r.lines || []).filter((x) => x && !x.dead);
         const labels = (r.labels || []).filter((x) => x && !x.dead);
+        const fills = (r.fills || []).filter((f, i) => !(r.inst.fillOff && r.inst.fillOff[i]));
         const old = r.pane.el.querySelector(':scope > .pine-draw');
-        if (!lines.length && !labels.length) { if (old) old.remove(); continue; }
-        const plot = r.def.plots[0];
-        const series = plot && r.series[plot.id];
+        if (!lines.length && !labels.length && !fills.length) { if (old) old.remove(); continue; }
+        const series = firstSeries(r);
         if (!series) continue;
         let canvas = old;
         if (!canvas) {
@@ -585,8 +722,17 @@ const Ind = (() => {
         const g = canvas.getContext('2d');
         g.setTransform(dpr, 0, 0, dpr, 0, 0);
         g.clearRect(0, 0, w, h);
+        g.beginPath();
+        g.rect(0, 0, w, h);
+        g.clip();
         const tsc = r.pane.chart.timeScale();
-        paintPineOn(g, { lines, labels }, (i) => tsc.logicalToCoordinate(i), (p) => series.priceToCoordinate(p), S.end, (text, x, y, color) => {
+        const xOf = (i) => tsc.logicalToCoordinate(i);
+        const yOf = (p) => series.priceToCoordinate(p);
+        const vis = tsc.getVisibleLogicalRange();
+        const i0 = vis ? Math.max(0, Math.floor(vis.from) - 2) : 0;
+        const i1 = vis ? Math.min(S.end - 1, Math.ceil(vis.to) + 2) : Math.max(0, S.end - 1);
+        paintFills(g, fills, r.out, xOf, yOf, i0, i1);
+        paintPineOn(g, { lines, labels }, xOf, yOf, S.end, (text, x, y, color) => {
           g.font = '11px -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
           g.fillStyle = color || '#fff';
           g.textAlign = 'center';
@@ -604,7 +750,8 @@ const Ind = (() => {
         for (const pl of r.def.plots) {
           if (pl.legend === false) continue;
           const el = row.querySelector(`.lg-val[data-plot="${CSS.escape(pl.id)}"]`);
-          const v = r.out[pl.id] ? r.out[pl.id][i] : null;
+          const lv = levelOf(r, pl);
+          const v = !plotShown(r, pl) ? null : (lv != null ? lv : (r.out[pl.id] ? r.out[pl.id][i] : null));
           if (el) el.textContent = v == null || !Number.isFinite(v) ? '—' : v.toFixed(prec);
         }
       }
@@ -612,9 +759,10 @@ const Ind = (() => {
     syncCrosshair(i) {
       for (const r of list) {
         if (!r.pane) continue;
-        const pl = r.def.plots[0];
-        const v = i == null || !pl ? null : r.out[pl.id][i];
-        if (v == null || !Number.isFinite(v)) r.pane.chart.clearCrosshairPosition();
+        const pl = r.def.plots.find((p) => !p.hidden && r.series[p.id]);
+        const arr = pl && r.out && r.out[pl.id];
+        const v = i == null || !arr ? null : arr[i];
+        if (!pl || v == null || !Number.isFinite(v)) r.pane.chart.clearCrosshairPosition();
         else r.pane.chart.setCrosshairPosition(v, S.bars[i].time, r.series[pl.id]);
       }
     },
@@ -757,10 +905,22 @@ const Ind = (() => {
       }).join('');
       const widthSel = (pl) => `<select data-w="${esc(pl.id)}" title="Độ dày">${[1, 2, 3, 4]
         .map((n) => `<option value="${n}"${n === plotWidth(r, pl) ? ' selected' : ''}>${n}px</option>`).join('')}</select>`;
-      const colors = r.def.plots.filter((pl) => !(pl.type === 'histogram' && pl.colors))
-        .map((pl) => `<label>${esc(pl.title || pl.id)}</label><span class="row tight"><input type="color" data-c="${esc(pl.id)}" value="${esc(plotColor(r, pl))}">` +
-          `${pl.type === 'histogram' ? '' : widthSel(pl)}</span>`).join('');
-      openModal(r.def.name, `<div class="ind-form">${params}${colors}</div>
+      const stylePlots = r.def.plots.filter((pl) => !pl.hidden && !(pl.type === 'histogram' && pl.colors));
+      const colors = (stylePlots.length ? `<div class="ind-group">Đường</div>` : '') + stylePlots.map((pl) => {
+        const on = plotShown(r, pl);
+        const lv = levelOf(r, pl);
+        const num = lv == null ? '' : `<input type="number" data-lv="${esc(pl.id)}" value="${lv}" step="any" title="Mức">`;
+        const hex = /^#[0-9a-fA-F]{6}$/.test(plotColor(r, pl)) ? plotColor(r, pl).toLowerCase() : '#787b86';
+        return `<label class="ind-check"><input type="checkbox" data-v="${esc(pl.id)}"${on ? ' checked' : ''}>${esc(pl.title || pl.id)}</label>` +
+          `<span class="row tight"><input type="color" data-c="${esc(pl.id)}" value="${hex}">` +
+          `${pl.type === 'histogram' ? '' : widthSel(pl)}${num}</span>`;
+      }).join('');
+      const fillRows = (r.fills || []).map((f, i) => {
+        const on = !(r.inst.fillOff && r.inst.fillOff[i]);
+        return `<label class="ind-check"><input type="checkbox" data-f="${i}"${on ? ' checked' : ''}>${esc(f.title || 'Fill')}</label><span></span>`;
+      }).join('');
+      const fills = fillRows ? `<div class="ind-group">Tô màu</div>${fillRows}` : '';
+      openModal(r.def.name, `<div class="ind-form">${params}${colors}${fills}</div>
         <div class="modal-actions"><button id="ind-reset">Mặc định</button><button id="ind-cancel">Hủy</button><button id="ind-ok" class="active">OK</button></div>`);
       const body = $('modal-body');
       $('ind-cancel').onclick = closeModal;
@@ -774,6 +934,12 @@ const Ind = (() => {
         });
         body.querySelectorAll('[data-w]').forEach((el) => {
           el.value = r.def.plots.find((pl) => pl.id === el.dataset.w).lineWidth || 1;
+        });
+        body.querySelectorAll('[data-v]').forEach((el) => { el.checked = true; });
+        body.querySelectorAll('[data-f]').forEach((el) => { el.checked = true; });
+        body.querySelectorAll('[data-lv]').forEach((el) => {
+          const pl = r.def.plots.find((x) => x.id === el.dataset.lv);
+          if (pl && pl.level != null) el.value = pl.level;
         });
       };
       $('ind-ok').onclick = () => {
@@ -795,6 +961,15 @@ const Ind = (() => {
         body.querySelectorAll('[data-c]').forEach((el) => { r.inst.colors[el.dataset.c] = el.value; });
         r.inst.widths = r.inst.widths || {};
         body.querySelectorAll('[data-w]').forEach((el) => { r.inst.widths[el.dataset.w] = +el.value; });
+        r.inst.hidden = {};
+        body.querySelectorAll('[data-v]').forEach((el) => { if (!el.checked) r.inst.hidden[el.dataset.v] = true; });
+        r.inst.levels = {};
+        body.querySelectorAll('[data-lv]').forEach((el) => {
+          const v = parseFloat(el.value);
+          if (Number.isFinite(v)) r.inst.levels[el.dataset.lv] = v;
+        });
+        r.inst.fillOff = {};
+        body.querySelectorAll('[data-f]').forEach((el) => { if (!el.checked) r.inst.fillOff[el.dataset.f] = true; });
         closeModal();
         rebuild(r);
         buildLegends(); save(); changed();

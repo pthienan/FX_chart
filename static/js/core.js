@@ -118,6 +118,10 @@ function render(fit) {
   Ind.renderAll();
   refreshTradeVisuals();
   if (fit) chart.timeScale().setVisibleLogicalRange({ from: S.end - INITIAL_BARS, to: S.end + 8 });
+  if (Ind.syncPanes) {
+    Ind.syncPanes();
+    requestAnimationFrame(() => Ind.syncPanes());
+  }
   Draw.dirty();
   updateUI();
 }

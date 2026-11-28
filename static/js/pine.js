@@ -50,8 +50,30 @@ const Pine = (() => {
     }
     const defaults = {};
     for (const prm of meta.params) defaults[prm.id] = prm.default;
-    execute(ast, meta, fake, defaults);
+    const sample = execute(ast, meta, fake, defaults);
+    if (!meta.overlay) {
+      const range = oscillatorRange(meta.plots, sample);
+      if (range) def.range = range;
+    }
     return def;
+  }
+
+  // RSI / Stochastic live on 0–100. A stray 0 (or a line in price units) must not crush the pane.
+  function oscillatorRange(plots, res) {
+    let mn = Infinity, mx = -Infinity, n = 0;
+    for (const pl of plots) {
+      const arr = res[pl.id];
+      if (!arr) continue;
+      for (let i = 0; i < arr.length; i++) {
+        const v = arr[i];
+        if (v == null || !Number.isFinite(v)) continue;
+        n++;
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+      }
+    }
+    if (n >= 8 && mn >= -2 && mx <= 105 && mx >= 30 && mx - mn >= 15) return [0, 100];
+    return null;
   }
 
   function blankComments(src) {
@@ -643,7 +665,7 @@ const Pine = (() => {
     function notePlot(e, kind, inFunc) {
       if (inFunc) throw new PineError(kind + '() phải nằm ngoài hàm', e.line);
       const disp = memberStr(named(e, 'display'));
-      if (disp === 'display.none') { e.hidden = true; return; }
+      const hidden = disp === 'display.none';
       const pos = positional(e);
       const title = constStr(named(e, 'title')) || constStr(pos[1]) || (kind === 'hline' ? 'Level' : 'Plot');
       const color = (kind === 'hline' ? constStr(named(e, 'color')) || constEval(pos[2]) : constEval(named(e, 'color')) || constEval(pos[2])) || '#2962ff';
@@ -652,7 +674,13 @@ const Pine = (() => {
       const width = constNum(named(e, 'linewidth'));
       const id = 'p' + meta.plots.length;
       e.plotId = id;
-      const pl = { id, title, color: hex, lineWidth: clampWidth(width || 1) };
+      e.hidden = hidden;
+      // display.none still keeps the series so fill() can use it. It is not drawn.
+      const pl = { id, title, color: hex, lineWidth: clampWidth(width || 1), hidden, legend: hidden ? false : undefined };
+      if (kind === 'hline') {
+        const price = constNum(named(e, 'price')) ?? constNum(pos[0]);
+        if (price != null) pl.level = price;
+      }
       if (/histogram|column|area/.test(styleM)) pl.type = 'histogram';
       if (/dotted/.test(styleM)) pl.style = 'dotted';
       else if (/dashed/.test(styleM)) pl.style = 'dashed';
@@ -922,6 +950,14 @@ const Pine = (() => {
       if (a == null || b == null) return null;
       return a - b;
     }
+    function taRoc(key, src, len) {
+      const w = Math.floor(Number(len) || 1);
+      const ch = taChange(key, src, w);
+      const s = mem(key);
+      const prev = s.buf && s.buf.length > w ? s.buf[s.buf.length - 1 - w] : null;
+      if (ch == null || prev == null || prev === 0) return null;
+      return ch / prev * 100;
+    }
     function taPivot(key, src, left, right, dir) {
       const s = mem(key); pushBuf(s, src);
       const L = Math.floor(Number(left)), R = Math.floor(Number(right));
@@ -1089,7 +1125,8 @@ const Pine = (() => {
       if (name === 'hline') return doHline(e, args);
       if (name === 'plotshape' || name === 'plotchar') return doShape(e, args, name);
       if (name === 'barcolor') return doBarColor(args);
-      if (name === 'fill' || name === 'bgcolor' || name === 'alert' || name === 'alertcondition' || name === 'indicator' || name === 'study' || name === 'max_bars_back') return null;
+      if (name === 'fill') return doFill(e, args);
+      if (name === 'bgcolor' || name === 'alert' || name === 'alertcondition' || name === 'indicator' || name === 'study' || name === 'max_bars_back') return null;
       if (name === 'nz') return a0 == null ? (args[1] ? a1 : 0) : a0;
       if (name === 'na') return a0 == null;
       if (name === 'fixnan') { const s = mem(key); if (a0 != null) s.last = a0; return a0 != null ? a0 : (s.last == null ? null : s.last); }
@@ -1107,7 +1144,7 @@ const Pine = (() => {
       if (name === 'ta.highestbars') { const x = extreme(key, a0, a1, 1); return x ? x.bars : null; }
       if (name === 'ta.lowestbars') { const x = extreme(key, a0, a1, -1); return x ? x.bars : null; }
       if (name === 'ta.change' || name === 'ta.mom') return taChange(key, a0, args[1] ? a1 : 1);
-      if (name === 'ta.roc') { const ch = taChange(key, a0, a1); const s = mem(key + '/b'); return ch == null || s.prev == null || s.prev === 0 ? null : ch / s.prev * 100; }
+      if (name === 'ta.roc') return taRoc(key, a0, a1);
       if (name === 'ta.tr') return trAt(bar);
       if (name === 'ta.atr') return taRma(key, trAt(bar), a0);
       if (name === 'ta.rsi') return taRsi(key, a0, a1);
@@ -1466,28 +1503,78 @@ const Pine = (() => {
       return v;
     }
     function putPlot(id, value, offset, color, hide) {
-      if (!id || hide) return value;
+      if (!id) return null;
       const dest = bar + (Number.isFinite(offset) ? offset : 0);
-      if (dest < 0 || dest >= n) return value;
-      if (hide === 'gap' || value == null || !Number.isFinite(value)) out[id][dest] = null;
+      const ref = { plotId: id };
+      if (dest < 0 || dest >= n) return ref;
+      const num = value == null || !Number.isFinite(value) ? null : value;
+      // A hidden plot is only there so fill() can read it.
+      if (hide === true) { out[id][dest] = num; return ref; }
+      if (hide === 'gap' || num == null) out[id][dest] = null;
       else {
-        out[id][dest] = value;
+        out[id][dest] = num;
         if (color) { colorOf[id][dest] = color; usedColor = true; }
       }
-      return value;
+      return ref;
     }
     function doPlot(e, args) {
       const value = asNum(argAt(args, null, 0));
       const offset = Math.round(asNum(argAt(args, 'offset', 7)) || 0);
       const raw = hasArg(args, 'color', 2) ? argAt(args, 'color', 2) : undefined;
       const col = raw === undefined ? undefined : cssColor(raw);
-      return putPlot(e.plotId, value, offset, col && col !== null ? col : null, e.hidden || col === null ? 'gap' : false);
+      // color.new(..., 100) hides the segment but the point stays, so the next
+      // divergence line starts at the previous pivot instead of stretching across.
+      const blank = raw !== undefined && col === null && asColor(raw) && asColor(raw).t >= 100;
+      if (e.hidden) return putPlot(e.plotId, value, offset, null, true);
+      if (blank) return putPlot(e.plotId, value, offset, 'rgba(0,0,0,0)', false);
+      return putPlot(e.plotId, value, offset, col && col !== null ? col : null, col === null ? 'gap' : false);
+    }
+    function paintColor(c) {
+      const col = asColor(c);
+      if (!col) return 'rgba(0,0,0,0)';
+      const [r, g, b] = rgbOf(col.hex);
+      const a = Math.max(0, Math.min(1, 1 - (col.t || 0) / 100));
+      return `rgba(${r},${g},${b},${a.toFixed(3)})`;
+    }
+    function plotIdOf(v) {
+      return v && typeof v === 'object' && v.plotId ? v.plotId : null;
+    }
+    function fillTitle(args, index) {
+      const t = argAt(args, 'title', index);
+      return t == null || t === '' ? 'Fill' : String(t);
+    }
+    const fills = [];
+    const fillSeen = new Set();
+    function doFill(e, args) {
+      const id1 = plotIdOf(argAt(args, null, 0));
+      const id2 = plotIdOf(argAt(args, null, 1));
+      if (!id1 || !id2) return null;
+      const third = argAt(args, 'top_value', 2);
+      const fourth = argAt(args, 'bottom_value', 3);
+      const namedBand = args.some((a) => a.name === 'top_color' || a.name === 'bottom_color' || a.name === 'top_value' || a.name === 'bottom_value');
+      const gradient = namedBand || (typeof third === 'number' && typeof fourth === 'number');
+      let spec;
+      if (gradient) {
+        const top = asNum(third);
+        const bottom = asNum(fourth);
+        if (top == null || bottom == null) return null;
+        spec = {
+          a: id1, b: id2, top, bottom,
+          topColor: paintColor(argAt(args, 'top_color', 4)),
+          bottomColor: paintColor(argAt(args, 'bottom_color', 5)),
+          title: fillTitle(args, 6),
+        };
+      } else {
+        spec = { a: id1, b: id2, color: paintColor(argAt(args, 'color', 2)), title: fillTitle(args, 3) };
+      }
+      if (!fillSeen.has(e.id)) { fillSeen.add(e.id); fills.push(spec); }
+      return null;
     }
     function doHline(e, args) {
       const value = asNum(argAt(args, 'price', 0));
       const raw = hasArg(args, 'color', 2) ? argAt(args, 'color', 2) : undefined;
       const col = raw === undefined ? undefined : cssColor(raw);
-      putPlot(e.plotId, value, 0, typeof col === 'string' ? col : null, e.hidden || col === null ? 'gap' : false);
+      putPlot(e.plotId, value, 0, typeof col === 'string' ? col : null, e.hidden ? true : (col === null ? 'gap' : false));
       return value;
     }
     function doShape(e, args, kind) {
@@ -1501,14 +1588,22 @@ const Pine = (() => {
       const raw = argAt(args, 'color', 4);
       const col = cssColor(raw);
       if (col === null) return series;
+      const text = argAt(args, kind === 'plotchar' ? 'char' : 'text', kind === 'plotchar' ? 2 : 6);
+      const label = text == null ? '' : String(text);
+      // location.absolute is a price on this pane (the RSI), not a candle marker.
+      if (/absolute/.test(loc)) {
+        const y = asNum(series);
+        if (y == null) return series;
+        labels.push({ x: dest, y, text: label, textColor: col || '#089981', color: col || '#089981', dead: false });
+        return series;
+      }
       let shape = 'circle', position = 'inBar';
       if (/down/.test(style)) shape = 'arrowDown';
       else if (/up/.test(style)) shape = 'arrowUp';
       else if (/square|diamond|label/.test(style)) shape = 'square';
       if (/below|bottom/.test(loc)) position = 'belowBar';
       else if (/above|top/.test(loc)) position = 'aboveBar';
-      const text = argAt(args, kind === 'plotchar' ? 'char' : 'text', kind === 'plotchar' ? 2 : 6);
-      marks.push({ time: bars[dest].time, position, color: col || '#2962ff', shape, text: text == null ? '' : String(text) });
+      marks.push({ time: bars[dest].time, position, color: col || '#2962ff', shape, text: label });
       return series;
     }
     function doBarColor(args) {
@@ -1651,7 +1746,7 @@ const Pine = (() => {
       evalBlock(ast);
     }
     const alive = (arr) => arr.filter((x) => x && !x.dead).slice(-3000);
-    const res = { marks, lines: alive(lines), labels: alive(labels) };
+    const res = { marks, lines: alive(lines), labels: alive(labels), fills };
     for (const pl of meta.plots) res[pl.id] = out[pl.id];
     if (usedColor) res.colors = colorOf;
     if (barColor) res.barColor = barColor;
