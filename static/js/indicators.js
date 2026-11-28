@@ -269,12 +269,9 @@ const Ind = (() => {
       delete inst.height;
       save();
     });
-    // TradingView only labels the line's value and the levels (30, 50, 70) on an oscillator scale.
-    // The 10, 20, 30… ruler is the chart's tick text, so that text is transparent and the grid is off.
+    // TradingView fits the pane to the line, then shows a few round ticks (30, 40, 50, 60) plus one value.
     const c = LightweightCharts.createChart(el.querySelector('.pane-chart'), chartOptions({
-      layout: { background: { color: THEME.bg }, textColor: 'rgba(0,0,0,0)', fontSize: 12 },
-      grid: { vertLines: { color: THEME.grid }, horzLines: { visible: false } },
-      rightPriceScale: { borderColor: THEME.border, minimumWidth: 80, scaleMargins: { top: 0.1, bottom: 0.1 }, ticksVisible: false },
+      rightPriceScale: { borderColor: THEME.border, minimumWidth: 80, scaleMargins: { top: 0.08, bottom: 0.08 } },
       timeScale: { visible: false, rightOffset: 8 },
     }));
     const handler = (range) => syncFrom(c, range);
@@ -287,16 +284,33 @@ const Ind = (() => {
     return { el, chart: c, legend: el.querySelector('.pane-legend') };
   }
 
-  function addPlotSeries(target, r, pl) {
+  function addPlotSeries(target, r, pl, isMain) {
     const prec = precisionOf(r);
     const opts = {
-      color: plotColor(r, pl), priceLineVisible: false, lastValueVisible: !!r.pane,
+      color: plotColor(r, pl), priceLineVisible: false, lastValueVisible: !!(r.pane && isMain),
       visible: r.inst.visible !== false,
       priceFormat: { type: 'price', precision: prec, minMove: 10 ** -prec },
     };
-    if (r.pane && r.def.range) {
-      const [minValue, maxValue] = r.def.range;
-      opts.autoscaleInfoProvider = () => ({ priceRange: { minValue, maxValue } });
+    if (r.pane && isMain) {
+      // Scale from the main line and the level prices, the way TradingView fits an oscillator.
+      // Other plots (divergence segments, a stray 0) must not add a label or stretch the scale.
+      opts.autoscaleInfoProvider = (base) => {
+        const info = base();
+        let mn = info && info.priceRange ? info.priceRange.minValue : Infinity;
+        let mx = info && info.priceRange ? info.priceRange.maxValue : -Infinity;
+        for (const other of r.def.plots) {
+          if (other.level == null) continue;
+          const v = levelOf(r, other);
+          if (!Number.isFinite(v)) continue;
+          if (v < mn) mn = v;
+          if (v > mx) mx = v;
+        }
+        if (!Number.isFinite(mn) || !Number.isFinite(mx) || mx <= mn) return info;
+        const pad = Math.max((mx - mn) * 0.08, 0.5);
+        return { priceRange: { minValue: mn - pad, maxValue: mx + pad } };
+      };
+    } else if (r.pane) {
+      opts.autoscaleInfoProvider = () => null;
     }
     if (pl.type === 'histogram') return target.addHistogramSeries({ ...opts, base: pl.base ?? 0 });
     return target.addLineSeries({
@@ -315,9 +329,12 @@ const Ind = (() => {
       r.pane = createPane(inst);
       target = r.pane.chart;
     }
+    let mainSet = false;
     for (const pl of def.plots) {
       if (pl.hidden) continue;
-      r.series[pl.id] = addPlotSeries(target, r, pl);
+      const isMain = !mainSet && pl.level == null;
+      if (isMain) mainSet = true;
+      r.series[pl.id] = addPlotSeries(target, r, pl, isMain);
     }
     if (r.pane) {
       const range = chart.timeScale().getVisibleLogicalRange();
