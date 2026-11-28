@@ -269,8 +269,12 @@ const Ind = (() => {
       delete inst.height;
       save();
     });
+    // TradingView only labels the line's value and the levels (30, 50, 70) on an oscillator scale.
+    // The 10, 20, 30… ruler is the chart's tick text, so that text is transparent and the grid is off.
     const c = LightweightCharts.createChart(el.querySelector('.pane-chart'), chartOptions({
-      rightPriceScale: { borderColor: THEME.border, minimumWidth: 80, scaleMargins: { top: 0.1, bottom: 0.1 } },
+      layout: { background: { color: THEME.bg }, textColor: 'rgba(0,0,0,0)', fontSize: 12 },
+      grid: { vertLines: { color: THEME.grid }, horzLines: { visible: false } },
+      rightPriceScale: { borderColor: THEME.border, minimumWidth: 80, scaleMargins: { top: 0.1, bottom: 0.1 }, ticksVisible: false },
       timeScale: { visible: false, rightOffset: 8 },
     }));
     const handler = (range) => syncFrom(c, range);

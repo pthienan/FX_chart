@@ -184,11 +184,29 @@ const Draw = (() => {
     $('undo-draw').disabled = undoStack.length === 0;
     $('redo-draw').disabled = redoStack.length === 0;
   }
-  function dropRedo() { redoStack = []; syncHist(); }
   function remember(action) {
     undoStack.push(action);
     redoStack = [];
     syncHist();
+  }
+  // Geometry only: one drag is one undo step, and a click that does not move is not a step.
+  function geomSnap(d) {
+    return {
+      pts: (d.pts || []).map((q) => ({ t: q.t, p: q.p })),
+      tp: d.tp, sl: d.sl,
+    };
+  }
+  function geomEqual(a, b) {
+    if (a.tp !== b.tp || a.sl !== b.sl || a.pts.length !== b.pts.length) return false;
+    for (let i = 0; i < a.pts.length; i++) {
+      if (a.pts[i].t !== b.pts[i].t || a.pts[i].p !== b.pts[i].p) return false;
+    }
+    return true;
+  }
+  function applyGeom(d, g) {
+    d.pts = g.pts.map((q) => ({ t: q.t, p: q.p }));
+    if (g.tp != null) d.tp = g.tp;
+    if (g.sl != null) d.sl = g.sl;
   }
   let magnet = false, keepTool = false, isDirty = true, lastSig = '';
 
@@ -1236,7 +1254,14 @@ const Draw = (() => {
 
   window.addEventListener('mouseup', () => {
     if (!drag) return;
-    if (drag.moved) { dropRedo(); save(); }
+    if (drag.moved && drag.orig) {
+      const before = geomSnap(drag.orig);
+      const after = geomSnap(drag.d);
+      if (!geomEqual(before, after)) {
+        remember({ kind: 'move', drawing: drag.d, before, after });
+        save();
+      }
+    }
     drag = null;
     dirty();
   });
@@ -1374,6 +1399,9 @@ const Draw = (() => {
         select(a.drawing);
       } else if (a.kind === 'clear') {
         S.drawings = a.drawings;
+      } else if (a.kind === 'move') {
+        applyGeom(a.drawing, a.before);
+        if (S.drawings.includes(a.drawing)) select(a.drawing);
       }
       redoStack.push(a);
       dirty(); save(); syncHist();
@@ -1390,6 +1418,9 @@ const Draw = (() => {
       } else if (a.kind === 'clear') {
         S.drawings = [];
         select(null);
+      } else if (a.kind === 'move') {
+        applyGeom(a.drawing, a.after);
+        if (S.drawings.includes(a.drawing)) select(a.drawing);
       }
       undoStack.push(a);
       dirty(); save(); syncHist();
